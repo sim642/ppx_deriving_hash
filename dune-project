@@ -8,4 +8,5 @@
 
 (package
  (name ppx_deriving_hash)
+ (synopsis "[@@deriving hash]")
  (depends ppxlib dune))
