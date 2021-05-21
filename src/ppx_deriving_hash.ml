@@ -187,7 +187,10 @@ let generate_impl ~ctxt (_rec_flag, type_declarations) =
 
 let impl_generator = Deriving.Generator.V2.make_noarg generate_impl
 
+let extension ~loc ~path:_ ct = expr ~loc ct
+
 let my_deriver =
   Deriving.add
     "hash"
     ~str_type_decl:impl_generator
+    ~extension
