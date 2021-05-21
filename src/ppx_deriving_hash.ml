@@ -94,7 +94,7 @@ and expr_variant ~loc constrs =
         in
         let pat prefix =
           cts
-          |> List.mapi (fun i comp_type ->
+          |> List.mapi (fun i _ ->
               let name = prefix ^ string_of_int i in
               ppat_var ~loc {loc; txt = name}
             )
@@ -142,7 +142,7 @@ and expr_tuple ~loc comps =
   in
   let pat prefix =
     comps
-    |> List.mapi (fun i comp_type ->
+    |> List.mapi (fun i _ ->
         let name = prefix ^ string_of_int i in
         ppat_var ~loc {loc; txt = name}
       )
