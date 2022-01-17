@@ -198,10 +198,32 @@ let generate_impl ~ctxt (_rec_flag, type_declarations) =
 
 let impl_generator = Deriving.Generator.V2.make_noarg generate_impl
 
+let generate_intf ~ctxt (_rec_flag, type_declarations): signature_item list =
+  let loc = Expansion_context.Deriver.derived_item_loc ctxt in
+  type_declarations
+  |> List.map (fun td ->
+      let ct = Ast_helper.Typ.constr {loc = td.ptype_name.loc; txt = Lident td.ptype_name.txt} (List.map fst td.ptype_params) in
+      let ct = [%type: [%t ct] -> int] in
+      let ct =
+        td.ptype_params
+        |> List.map (fun (param, _) ->
+            [%type: [%t param] -> int]
+          )
+        |> List.rev
+        |> List.fold_left (fun acc pat ->
+            [%type: [%t pat] -> [%t acc]]
+          ) ct
+      in
+      Ast_helper.Sig.value ~loc (Ast_helper.Val.mk {loc; txt = mangle "hash" td.ptype_name.txt} ct)
+    )
+
+let intf_generator = Deriving.Generator.V2.make_noarg generate_intf
+
 let extension ~loc ~path:_ ct = expr ~loc ct
 
 let my_deriver =
   Deriving.add
     "hash"
     ~str_type_decl:impl_generator
+    ~sig_type_decl:intf_generator
     ~extension
