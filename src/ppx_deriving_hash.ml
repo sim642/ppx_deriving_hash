@@ -20,6 +20,8 @@ let rec expr ~loc ct = match ct with
     [%expr Char.code]
   | [%type: bool] ->
     [%expr Bool.to_int]
+  | [%type: int32] ->
+    [%expr Int32.to_int]
   | [%type: int64] ->
     [%expr Int64.to_int]
   | [%type: int] ->
