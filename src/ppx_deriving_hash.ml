@@ -184,8 +184,10 @@ let generate_impl ~ctxt (_rec_flag, type_declarations) =
           ) expr
       in
       let pat = ppat_var ~loc {loc; txt = mangle "hash" td.ptype_name.txt} in
-      [%stri let [%p pat] = [%e expr]]
+      Ast_helper.Vb.mk ~loc pat expr
     )
+  |> Ast_helper.Str.value ~loc Recursive
+  |> fun v -> [v]
 
 let impl_generator = Deriving.Generator.V2.make_noarg generate_impl
 
