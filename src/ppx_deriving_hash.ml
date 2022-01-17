@@ -2,6 +2,8 @@ open Ppxlib
 open Ast_builder.Default
 
 
+let attr_hash = Attribute.declare "deriving.hash.hash" Attribute.Context.core_type Ast_pattern.(single_expr_payload __) Fun.id
+
 let mangle prefix name =
   if name = "t" then
     prefix
@@ -13,45 +15,50 @@ let mangle_lid prefix lid = match lid with
   | Ldot (p, s) -> Ldot (p, mangle prefix s)
   | Lapply _ -> invalid_arg "mangle_lid"
 
-let rec expr ~loc ct = match ct with
-  | [%type: string] ->
-    [%expr Hashtbl.hash]
-  | [%type: char] ->
-    [%expr Char.code]
-  | [%type: bool] ->
-    [%expr Bool.to_int]
-  | [%type: int32] ->
-    [%expr Int32.to_int]
-  | [%type: int64] ->
-    [%expr Int64.to_int]
-  | [%type: int] ->
-    [%expr fun x -> x]
-  | [%type: unit] ->
-    [%expr fun () -> 31]
-  | [%type: [%t? a] option] ->
-    [%expr function
-      | Some x -> [%e expr ~loc a] x
-      | None -> 31
-    ]
-  | [%type: [%t? a] list] ->
-    [%expr List.fold_left (fun a b -> 31 * a + [%e expr ~loc a] b) 0]
-  | {ptyp_desc = Ptyp_constr ({txt = lid; loc}, args); _} ->
-    let ident = pexp_ident ~loc {loc; txt = mangle_lid "hash" lid} in
-    let apply_args =
-      args
-      |> List.map (fun ct ->
-          (Nolabel, expr ~loc ct)
-        )
-    in
-    pexp_apply ~loc ident apply_args
-  | {ptyp_desc = Ptyp_tuple comps; _} ->
-    expr_tuple ~loc comps
-  | {ptyp_desc = Ptyp_variant (rows, Closed, None); _} ->
-    expr_poly_variant ~loc rows
-  | {ptyp_desc = Ptyp_var name; _} ->
-    evar ~loc ("poly_" ^ name)
-  | _ ->
-    Location.raise_errorf ~loc "other"
+let rec expr ~loc ct =
+  match Attribute.get attr_hash ct with
+  | Some hash ->
+    hash
+  | None ->
+    match ct with
+    | [%type: string] ->
+      [%expr Hashtbl.hash]
+    | [%type: char] ->
+      [%expr Char.code]
+    | [%type: bool] ->
+      [%expr Bool.to_int]
+    | [%type: int32] ->
+      [%expr Int32.to_int]
+    | [%type: int64] ->
+      [%expr Int64.to_int]
+    | [%type: int] ->
+      [%expr fun x -> x]
+    | [%type: unit] ->
+      [%expr fun () -> 31]
+    | [%type: [%t? a] option] ->
+      [%expr function
+        | Some x -> [%e expr ~loc a] x
+        | None -> 31
+      ]
+    | [%type: [%t? a] list] ->
+      [%expr List.fold_left (fun a b -> 31 * a + [%e expr ~loc a] b) 0]
+    | {ptyp_desc = Ptyp_constr ({txt = lid; loc}, args); _} ->
+      let ident = pexp_ident ~loc {loc; txt = mangle_lid "hash" lid} in
+      let apply_args =
+        args
+        |> List.map (fun ct ->
+            (Nolabel, expr ~loc ct)
+          )
+      in
+      pexp_apply ~loc ident apply_args
+    | {ptyp_desc = Ptyp_tuple comps; _} ->
+      expr_tuple ~loc comps
+    | {ptyp_desc = Ptyp_variant (rows, Closed, None); _} ->
+      expr_poly_variant ~loc rows
+    | {ptyp_desc = Ptyp_var name; _} ->
+      evar ~loc ("poly_" ^ name)
+    | _ ->
+      Location.raise_errorf ~loc "other"
 
 and expr_poly_variant ~loc rows =
   rows
