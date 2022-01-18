@@ -163,6 +163,13 @@ let expr_declaration ~loc ~quoter td = match td with
   | {ptype_kind = Ptype_record fields; _} ->
     expr_record ~loc ~quoter fields
 
+let typ ~loc td =
+  let ct = Ppx_deriving.core_type_of_type_decl td in
+  Ppx_deriving.poly_arrow_of_type_decl
+    (fun param -> [%type: [%t param] -> int])
+    td
+    [%type: [%t ct] -> int]
+
 let generate_impl ~ctxt (_rec_flag, type_declarations) =
   let loc = Expansion_context.Deriver.derived_item_loc ctxt in
   type_declarations
@@ -171,7 +178,9 @@ let generate_impl ~ctxt (_rec_flag, type_declarations) =
       let expr = expr_declaration ~loc ~quoter td in
       let expr = Ppx_deriving.sanitize ~quoter expr in
       let expr = Ppx_deriving.poly_fun_of_type_decl td expr in
+      let ct = typ ~loc td in
       let pat = ppat_var ~loc {loc; txt = Ppx_deriving.mangle_type_decl mangle_affix td} in
+      let pat = ppat_constraint ~loc pat ct in
       Ast_helper.Vb.mk ~loc pat expr
     )
   |> Ast_helper.Str.value ~loc Recursive
@@ -183,12 +192,7 @@ let generate_intf ~ctxt (_rec_flag, type_declarations): signature_item list =
   let loc = Expansion_context.Deriver.derived_item_loc ctxt in
   type_declarations
   |> List.map (fun td ->
-      let ct = Ppx_deriving.core_type_of_type_decl td in
-      let ct = Ppx_deriving.poly_arrow_of_type_decl
-        (fun param -> [%type: [%t param] -> int])
-        td
-        [%type: [%t ct] -> int]
-      in
+      let ct = typ ~loc td in
       Ast_helper.Sig.value ~loc (Ast_helper.Val.mk {loc; txt = Ppx_deriving.mangle_type_decl mangle_affix td} ct)
     )
 
