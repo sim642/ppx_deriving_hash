@@ -8,6 +8,7 @@ bug-reports: "https://github.com/sim642/ppx_deriving_hash/issues"
 depends: [
   "dune" {>= "2.8"}
   "ppxlib"
+  "ppx_deriving"
   "odoc" {with-doc}
 ]
 build: [

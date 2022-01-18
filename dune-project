@@ -8,4 +8,4 @@
 (package
  (name ppx_deriving_hash)
  (synopsis "[@@deriving hash]")
- (depends ppxlib))
+ (depends ppxlib ppx_deriving))
