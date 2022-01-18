@@ -4,5 +4,3 @@
  (kind ppx_deriver)
  (libraries ppxlib)
  (preprocess (pps ppxlib.metaquot)))
-
-(include_subdirs no)
