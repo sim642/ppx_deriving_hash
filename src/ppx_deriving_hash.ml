@@ -166,20 +166,7 @@ let generate_impl ~ctxt (_rec_flag, type_declarations) =
   type_declarations
   |> List.map (fun td ->
       let expr = expr_declaration ~loc td in
-      let expr =
-        td.ptype_params
-        |> List.map (fun (param, _) ->
-            match param with
-            | {ptyp_desc = Ptyp_var name; _} ->
-              pvar ~loc ("poly_" ^ name)
-            | _ ->
-              Location.raise_errorf ~loc "other param"
-          )
-        |> List.rev
-        |> List.fold_left (fun acc pat ->
-            [%expr fun [%p pat] -> [%e acc]]
-          ) expr
-      in
+      let expr = Ppx_deriving.poly_fun_of_type_decl td expr in
       let pat = ppat_var ~loc {loc; txt = Ppx_deriving.mangle_type_decl mangle_affix td} in
       Ast_helper.Vb.mk ~loc pat expr
     )
@@ -192,17 +179,11 @@ let generate_intf ~ctxt (_rec_flag, type_declarations): signature_item list =
   let loc = Expansion_context.Deriver.derived_item_loc ctxt in
   type_declarations
   |> List.map (fun td ->
-      let ct = Ast_helper.Typ.constr {loc = td.ptype_name.loc; txt = Lident td.ptype_name.txt} (List.map fst td.ptype_params) in
-      let ct = [%type: [%t ct] -> int] in
-      let ct =
-        td.ptype_params
-        |> List.map (fun (param, _) ->
-            [%type: [%t param] -> int]
-          )
-        |> List.rev
-        |> List.fold_left (fun acc pat ->
-            [%type: [%t pat] -> [%t acc]]
-          ) ct
+      let ct = Ppx_deriving.core_type_of_type_decl td in
+      let ct = Ppx_deriving.poly_arrow_of_type_decl
+        (fun param -> [%type: [%t param] -> int])
+        td
+        [%type: [%t ct] -> int]
       in
       Ast_helper.Sig.value ~loc (Ast_helper.Val.mk {loc; txt = Ppx_deriving.mangle_type_decl mangle_affix td} ct)
     )
