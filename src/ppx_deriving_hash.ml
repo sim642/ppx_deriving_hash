@@ -1,19 +1,9 @@
 open Ppxlib
 open Ast_builder.Default
 
+let mangle_affix = `Prefix "hash"
 
 let attr_hash = Attribute.declare "deriving.hash.hash" Attribute.Context.core_type Ast_pattern.(single_expr_payload __) Fun.id
-
-let mangle prefix name =
-  if name = "t" then
-    prefix
-  else
-    prefix ^ "_" ^ name
-
-let mangle_lid prefix lid = match lid with
-  | Lident s -> Lident (mangle prefix s)
-  | Ldot (p, s) -> Ldot (p, mangle prefix s)
-  | Lapply _ -> invalid_arg "mangle_lid"
 
 let rec expr ~loc ct =
   match Attribute.get attr_hash ct with
@@ -43,7 +33,7 @@ let rec expr ~loc ct =
     | [%type: [%t? a] list] ->
       [%expr List.fold_left (fun a b -> 31 * a + [%e expr ~loc a] b) 0]
     | {ptyp_desc = Ptyp_constr ({txt = lid; loc}, args); _} ->
-      let ident = pexp_ident ~loc {loc; txt = mangle_lid "hash" lid} in
+      let ident = pexp_ident ~loc {loc; txt = Ppx_deriving.mangle_lid mangle_affix lid} in
       let apply_args =
         args
         |> List.map (fun ct ->
@@ -190,7 +180,7 @@ let generate_impl ~ctxt (_rec_flag, type_declarations) =
             [%expr fun [%p pat] -> [%e acc]]
           ) expr
       in
-      let pat = ppat_var ~loc {loc; txt = mangle "hash" td.ptype_name.txt} in
+      let pat = ppat_var ~loc {loc; txt = Ppx_deriving.mangle_type_decl mangle_affix td} in
       Ast_helper.Vb.mk ~loc pat expr
     )
   |> Ast_helper.Str.value ~loc Recursive
@@ -214,7 +204,7 @@ let generate_intf ~ctxt (_rec_flag, type_declarations): signature_item list =
             [%type: [%t pat] -> [%t acc]]
           ) ct
       in
-      Ast_helper.Sig.value ~loc (Ast_helper.Val.mk {loc; txt = mangle "hash" td.ptype_name.txt} ct)
+      Ast_helper.Sig.value ~loc (Ast_helper.Val.mk {loc; txt = Ppx_deriving.mangle_type_decl mangle_affix td} ct)
     )
 
 let intf_generator = Deriving.Generator.V2.make_noarg generate_intf
