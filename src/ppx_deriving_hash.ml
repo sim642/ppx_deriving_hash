@@ -181,7 +181,7 @@ let generate_impl ~ctxt (_rec_flag, type_declarations) =
       let ct = typ ~loc td in
       let pat = ppat_var ~loc {loc; txt = Ppx_deriving.mangle_type_decl mangle_affix td} in
       let pat = ppat_constraint ~loc pat ct in
-      Ast_helper.Vb.mk ~loc pat expr
+      Ast_helper.Vb.mk ~loc ~attrs:[Ppx_deriving.attr_warning [%expr "-39"]] pat expr
     )
   |> Ast_helper.Str.value ~loc Recursive
   |> fun v -> [v]
