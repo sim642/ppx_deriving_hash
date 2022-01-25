@@ -69,7 +69,8 @@ jobs:
 
       - name: Downgrade dependencies
         # must specify ocaml-base-compiler again to prevent it from being downgraded
-        run: opam install $(opam exec -- opam-0install --prefer-oldest ppx_deriving_hash ocaml-base-compiler.${{ matrix.ocaml-compiler }})
+        # run: opam install $(opam exec -- opam-0install --prefer-oldest ppx_deriving_hash ocaml-base-compiler.${{ matrix.ocaml-compiler }})
+        run: opam install $(opam exec -- opam-0install --prefer-oldest ppx_deriving_hash)
 
       - name: Build
         run: opam exec -- dune build
