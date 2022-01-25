@@ -4,6 +4,7 @@
 (source (github sim642/ppx_deriving_hash))
 (authors "Simmo Saan <simmo.saan@gmail.com>")
 (maintainers "Simmo Saan <simmo.saan@gmail.com>")
+(license MIT)
 
 (package
  (name ppx_deriving_hash)
