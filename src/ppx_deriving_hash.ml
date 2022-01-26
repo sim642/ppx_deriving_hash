@@ -5,6 +5,10 @@ let mangle_affix = `Prefix "hash"
 
 let attr_hash = Attribute.declare "deriving.hash.hash" Attribute.Context.core_type Ast_pattern.(single_expr_payload __) Fun.id
 
+let hash_reduce ~loc =
+  (* TODO: assume nonempty list, omit initial value *)
+  List.fold_left (fun a b -> [%expr 31 * [%e a] + [%e b]]) [%expr 0]
+
 let rec expr ~loc ~quoter ct =
   match Attribute.get attr_hash ct with
   | Some hash ->
@@ -91,7 +95,7 @@ and expr_variant ~loc ~quoter constrs =
           |> List.map (fun (i, label_fun) ->
               [%expr [%e label_fun] [%e label_field ~loc "x" i]]
             )
-          |> List.fold_left (fun a b -> [%expr 31 * [%e a] + [%e b]]) [%expr 0]
+          |> hash_reduce ~loc
         in
         let pat prefix =
           cts
@@ -122,7 +126,7 @@ and expr_record ~loc ~quoter lds =
     |> List.map (fun (label, label_fun) ->
         [%expr [%e label_fun] [%e label_field ~loc x_expr label]]
       )
-    |> List.fold_left (fun a b -> [%expr 31 * [%e a] + [%e b]]) [%expr 0]
+    |> hash_reduce ~loc
   in
   [%expr fun x -> [%e body [%expr x]]]
 
@@ -139,7 +143,7 @@ and expr_tuple ~loc ~quoter comps =
     |> List.map (fun (i, label_fun) ->
         [%expr [%e label_fun] [%e label_field ~loc "x" i]]
       )
-    |> List.fold_left (fun a b -> [%expr 31 * [%e a] + [%e b]]) [%expr 0]
+    |> hash_reduce ~loc
   in
   let pat prefix =
     comps
