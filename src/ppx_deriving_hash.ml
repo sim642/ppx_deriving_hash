@@ -13,9 +13,10 @@ let hash_reduce2 ~loc a b =
 
 let hash_empty ~loc = [%expr 0]
 
-let hash_reduce ~loc =
-  (* TODO: assume nonempty list, omit initial value *)
-  List.fold_left (fun a b -> [%expr 31 * [%e a] + [%e b]]) [%expr 0]
+let hash_reduce ~loc = function
+  | [] -> hash_empty ~loc
+  | [x] -> x
+  | x :: xs -> hash_fold ~loc x xs (* omits hash_empty *)
 
 let hash_variant ~loc i = eint ~loc i
 
