@@ -5,6 +5,12 @@ let mangle_affix = `Prefix "hash"
 
 let attr_hash = Attribute.declare "deriving.hash.hash" Attribute.Context.core_type Ast_pattern.(single_expr_payload __) Fun.id
 
+let hash_fold ~loc i =
+  List.fold_left (fun a b -> [%expr 31 * [%e a] + [%e b]]) i
+
+let hash_reduce2 ~loc a b =
+  [%expr 31 * [%e a] + [%e b]]
+
 let hash_reduce ~loc =
   (* TODO: assume nonempty list, omit initial value *)
   List.fold_left (fun a b -> [%expr 31 * [%e a] + [%e b]]) [%expr 0]
@@ -61,14 +67,18 @@ and expr_poly_variant ~loc ~quoter rows =
   |> List.map (fun {prf_desc; _} ->
       match prf_desc with
       | Rtag ({txt = label; loc}, true, []) ->
+        let variant_i = Ppx_deriving.hash_variant label in
+        let variant_const = eint ~loc variant_i in
         case ~lhs:(ppat_variant ~loc label None)
           ~guard:None
-          ~rhs:([%expr 31])
+          ~rhs:variant_const
       | Rtag ({txt = label; loc}, false, [ct]) ->
+        let variant_i = Ppx_deriving.hash_variant label in
+        let variant_const = eint ~loc variant_i in
         let label_fun = expr ~loc ~quoter ct in
         case ~lhs:(ppat_variant ~loc label (Some [%pat? x]))
           ~guard:None
-          ~rhs:([%expr [%e label_fun] x])
+          ~rhs:(hash_reduce2 ~loc variant_const [%expr [%e label_fun] x])
       | _ ->
         Location.raise_errorf ~loc "other variant"
     )
@@ -76,12 +86,13 @@ and expr_poly_variant ~loc ~quoter rows =
 
 and expr_variant ~loc ~quoter constrs =
   constrs
-  |> List.map (fun {pcd_name = {txt = label; loc}; pcd_args; pcd_res; _} ->
+  |> List.mapi (fun variant_i {pcd_name = {txt = label; loc}; pcd_args; pcd_res; _} ->
+      let variant_const = eint ~loc variant_i in
       match pcd_res, pcd_args with
       | None, Pcstr_tuple [] ->
         case ~lhs:(ppat_construct ~loc {loc; txt = Lident label} None)
           ~guard:None
-          ~rhs:([%expr 31])
+          ~rhs:variant_const
       | None, Pcstr_tuple cts ->
         let label_field ~loc prefix i =
           let name = prefix ^ string_of_int i in
@@ -95,7 +106,7 @@ and expr_variant ~loc ~quoter constrs =
           |> List.map (fun (i, label_fun) ->
               [%expr [%e label_fun] [%e label_field ~loc "x" i]]
             )
-          |> hash_reduce ~loc
+          |> hash_fold ~loc variant_const
         in
         let pat prefix =
           cts
