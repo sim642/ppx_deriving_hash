@@ -39,7 +39,7 @@ let rec expr ~loc ~quoter ct =
     | [%type: int64] ->
       [%expr Int64.to_int]
     | [%type: int] ->
-      [%expr fun x -> x]
+      [%expr fun (x: int) -> x]
     | [%type: unit] ->
       [%expr fun () -> [%e hash_empty ~loc]]
     | [%type: [%t? a] option] ->
