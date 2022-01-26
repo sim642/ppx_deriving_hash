@@ -17,6 +17,8 @@ let hash_reduce ~loc =
   (* TODO: assume nonempty list, omit initial value *)
   List.fold_left (fun a b -> [%expr 31 * [%e a] + [%e b]]) [%expr 0]
 
+let hash_variant ~loc i = eint ~loc i
+
 let rec expr ~loc ~quoter ct =
   match Attribute.get attr_hash ct with
   | Some hash ->
@@ -41,8 +43,8 @@ let rec expr ~loc ~quoter ct =
     | [%type: [%t? a] option] ->
       [%expr function
         (* like variants *)
-        | None -> 0
-        | Some x -> [%e hash_reduce2 ~loc [%expr 1] [%expr [%e expr ~loc a] x]]
+        | None -> [%e hash_variant ~loc 0]
+        | Some x -> [%e hash_reduce2 ~loc (hash_variant ~loc 1) [%expr [%e expr ~loc a] x]]
       ]
     | [%type: [%t? a] list] ->
       [%expr List.fold_left (fun a b -> [%e hash_reduce2 ~loc [%expr a] [%expr [%e expr ~loc a] b]]) [%e hash_empty ~loc]]
@@ -71,13 +73,13 @@ and expr_poly_variant ~loc ~quoter rows =
       match prf_desc with
       | Rtag ({txt = label; loc}, true, []) ->
         let variant_i = Ppx_deriving.hash_variant label in
-        let variant_const = eint ~loc variant_i in
+        let variant_const = hash_variant ~loc variant_i in
         case ~lhs:(ppat_variant ~loc label None)
           ~guard:None
           ~rhs:variant_const
       | Rtag ({txt = label; loc}, false, [ct]) ->
         let variant_i = Ppx_deriving.hash_variant label in
-        let variant_const = eint ~loc variant_i in
+        let variant_const = hash_variant ~loc variant_i in
         let label_fun = expr ~loc ~quoter ct in
         case ~lhs:(ppat_variant ~loc label (Some [%pat? x]))
           ~guard:None
@@ -90,7 +92,7 @@ and expr_poly_variant ~loc ~quoter rows =
 and expr_variant ~loc ~quoter constrs =
   constrs
   |> List.mapi (fun variant_i {pcd_name = {txt = label; loc}; pcd_args; pcd_res; _} ->
-      let variant_const = eint ~loc variant_i in
+      let variant_const = hash_variant ~loc variant_i in
       match pcd_res, pcd_args with
       | None, Pcstr_tuple [] ->
         case ~lhs:(ppat_construct ~loc {loc; txt = Lident label} None)
