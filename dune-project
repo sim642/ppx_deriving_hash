@@ -10,4 +10,6 @@
  (name ppx_deriving_hash)
  (synopsis "[@@deriving hash]")
  (description "Deriver for standard hash functions without extra dependencies.")
- (depends ppxlib ppx_deriving))
+ (depends
+  ppxlib
+  (ppx_deriving (>= 5.0))))
