@@ -5,11 +5,12 @@ let mangle_affix = `Prefix "hash"
 
 let attr_hash = Attribute.declare "deriving.hash.hash" Attribute.Context.core_type Ast_pattern.(single_expr_payload __) Fun.id
 
-let hash_fold ~loc i =
-  List.fold_left (fun a b -> [%expr 31 * [%e a] + [%e b]]) i
 
 let hash_reduce2 ~loc a b =
   [%expr 31 * [%e a] + [%e b]]
+
+let hash_fold ~loc i =
+  List.fold_left (hash_reduce2 ~loc) i
 
 let hash_empty ~loc = [%expr 0]
 
