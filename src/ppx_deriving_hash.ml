@@ -11,6 +11,8 @@ let hash_fold ~loc i =
 let hash_reduce2 ~loc a b =
   [%expr 31 * [%e a] + [%e b]]
 
+let hash_empty ~loc = [%expr 0]
+
 let hash_reduce ~loc =
   (* TODO: assume nonempty list, omit initial value *)
   List.fold_left (fun a b -> [%expr 31 * [%e a] + [%e b]]) [%expr 0]
@@ -35,14 +37,15 @@ let rec expr ~loc ~quoter ct =
     | [%type: int] ->
       [%expr fun x -> x]
     | [%type: unit] ->
-      [%expr fun () -> 31]
+      [%expr fun () -> [%e hash_empty ~loc]]
     | [%type: [%t? a] option] ->
       [%expr function
-        | Some x -> [%e expr ~loc a] x
-        | None -> 31
+        (* like variants *)
+        | None -> 0
+        | Some x -> [%e hash_reduce2 ~loc [%expr 1] [%expr [%e expr ~loc a] x]]
       ]
     | [%type: [%t? a] list] ->
-      [%expr List.fold_left (fun a b -> 31 * a + [%e expr ~loc a] b) 0]
+      [%expr List.fold_left (fun a b -> [%e hash_reduce2 ~loc [%expr a] [%expr [%e expr ~loc a] b]]) [%e hash_empty ~loc]]
     | {ptyp_desc = Ptyp_constr ({txt = lid; loc}, args); _} ->
       let ident = pexp_ident ~loc {loc; txt = Ppx_deriving.mangle_lid mangle_affix lid} in
       let ident = Ppx_deriving.quote ~quoter ident in
