@@ -3,7 +3,7 @@ open Ast_builder.Default
 
 let mangle_affix = `Prefix "hash"
 
-let attr_hash = Attribute.declare "deriving.hash.hash" Attribute.Context.core_type Ast_pattern.(single_expr_payload __) Fun.id
+let attr_hash = Attribute.declare "deriving.hash.hash" Attribute.Context.core_type Ast_pattern.(single_expr_payload __) (fun expr -> expr)
 
 
 let hash_reduce2 ~loc a b =
