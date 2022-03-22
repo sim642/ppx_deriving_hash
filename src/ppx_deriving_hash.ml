@@ -127,6 +127,24 @@ and expr_variant ~loc ~quoter constrs =
         case ~lhs:(pat "x")
           ~guard:None
           ~rhs:body
+      | None, Pcstr_record lds ->
+        let label_field ~loc record_expr label =
+          pexp_field ~loc record_expr {loc; txt = Lident label}
+        in
+        let body x_expr =
+          lds
+          |> List.map (fun {pld_name = {txt = label; loc}; pld_type; _} ->
+              (label, expr ~loc ~quoter pld_type)
+            )
+          |> List.map (fun (label, label_fun) ->
+              [%expr [%e label_fun] [%e label_field ~loc x_expr label]]
+            )
+          |> hash_fold ~loc variant_const
+        in
+        let pat = ppat_construct ~loc {loc; txt = Lident label} (Some [%pat? x]) in
+        case ~lhs:pat
+          ~guard:None
+          ~rhs:(body [%expr x])
       | _ ->
         Location.raise_errorf ~loc "other variant"
     )
