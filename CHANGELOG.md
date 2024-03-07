@@ -1,4 +1,4 @@
-## Unreleased
+## 0.1.2
 * Add inline record support (#1).
 * Add `float` support (#2).
 * Add `ref` support (#3).
