@@ -28,6 +28,7 @@ let rec expr ~loc ~quoter ct =
   | None ->
     let expr = expr ~quoter in
     match ct with
+    | [%type: float]
     | [%type: string] ->
       [%expr Hashtbl.hash]
     | [%type: char] ->
