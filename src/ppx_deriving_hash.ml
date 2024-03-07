@@ -43,6 +43,8 @@ let rec expr ~loc ~quoter ct =
       [%expr fun (x: int) -> x]
     | [%type: unit] ->
       [%expr fun () -> [%e hash_empty ~loc]]
+    | [%type: [%t? a] ref] ->
+      [%expr fun x -> [%e expr ~loc a] !x]
     | [%type: [%t? a] option] ->
       [%expr function
         (* like variants *)
