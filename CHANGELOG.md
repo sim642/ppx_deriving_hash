@@ -1,3 +1,6 @@
+## Unreleased
+* Add `lazy` support (#5).
+
 ## 0.1.2
 * Add inline record support (#1).
 * Add `float` support (#2).

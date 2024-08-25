@@ -55,6 +55,9 @@ let rec expr ~loc ~quoter ct =
       [%expr List.fold_left (fun a b -> [%e hash_reduce2 ~loc [%expr a] [%expr [%e expr ~loc a] b]]) [%e hash_empty ~loc]]
     | [%type: [%t? a] array] ->
       [%expr Array.fold_left (fun a b -> [%e hash_reduce2 ~loc [%expr a] [%expr [%e expr ~loc a] b]]) [%e hash_empty ~loc]]
+    | [%type: [%t? a] lazy_t]
+    | [%type: [%t? a] Lazy.t] ->
+      [%expr fun (lazy x) -> [%e expr ~loc a] x]
     | {ptyp_desc = Ptyp_constr ({txt = lid; loc}, args); _} ->
       let ident = pexp_ident ~loc {loc; txt = Ppx_deriving.mangle_lid mangle_affix lid} in
       let ident = Ppx_deriving.quote ~quoter ident in
