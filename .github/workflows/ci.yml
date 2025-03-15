@@ -13,6 +13,7 @@ jobs:
           - ubuntu-latest
           # - macos-latest
         ocaml-compiler:
+          - 5.3.x
           - 5.2.x
           - 5.1.x
           - 5.0.x
@@ -23,18 +24,15 @@ jobs:
           - 4.10.x
           - 4.09.x
           - 4.08.x
-          - 4.07.x
-          - 4.06.x
-          - 4.05.x
 
     runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up OCaml ${{ matrix.ocaml-compiler }}
-        uses: ocaml/setup-ocaml@v2
+        uses: ocaml/setup-ocaml@v3
         with:
           ocaml-compiler: ${{ matrix.ocaml-compiler }}
 
@@ -64,10 +62,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up OCaml ${{ matrix.ocaml-compiler }}
-        uses: ocaml/setup-ocaml@v2
+        uses: ocaml/setup-ocaml@v3
         with:
           ocaml-compiler: ${{ matrix.ocaml-compiler }}
 
@@ -80,7 +78,7 @@ jobs:
       - name: Downgrade dependencies
         # must specify ocaml-base-compiler again to prevent it from being downgraded
         # run: opam install $(opam exec -- opam-0install --prefer-oldest ppx_deriving_hash ocaml-base-compiler.${{ matrix.ocaml-compiler }})
-        run: opam install --unlock-base $(opam exec -- opam-0install --prefer-oldest ppx_deriving_hash)
+        run: opam install --update-invariant $(opam exec -- opam-0install --prefer-oldest ppx_deriving_hash)
 
       - name: Build
         run: opam exec -- dune build
@@ -99,10 +97,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up OCaml ${{ matrix.ocaml-compiler }}
-        uses: ocaml/setup-ocaml@v2
+        uses: ocaml/setup-ocaml@v3
         with:
           ocaml-compiler: ${{ matrix.ocaml-compiler }}
 
