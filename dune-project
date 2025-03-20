@@ -11,5 +11,5 @@
  (synopsis "[@@deriving hash]")
  (description "Deriver for standard hash functions without extra dependencies.")
  (depends
-  ppxlib
+  (ppxlib (>= 0.36.0))
   (ppx_deriving (>= 5.0))))
