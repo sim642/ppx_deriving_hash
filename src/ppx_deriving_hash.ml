@@ -97,7 +97,7 @@ and expr_poly_variant ~loc ~quoter rows =
       | _ ->
         Location.raise_errorf ~loc "other variant"
     )
-  |> pexp_function ~loc
+  |> pexp_function_cases ~loc
 
 and expr_variant ~loc ~quoter constrs =
   constrs
@@ -156,7 +156,7 @@ and expr_variant ~loc ~quoter constrs =
       | _ ->
         Location.raise_errorf ~loc "other variant"
     )
-  |> pexp_function ~loc
+  |> pexp_function_cases ~loc
 
 and expr_record ~loc ~quoter lds =
   let label_field ~loc record_expr label =
