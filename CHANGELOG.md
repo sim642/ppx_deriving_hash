@@ -1,5 +1,6 @@
-## Unreleased
+## 0.1.3
 * Add `lazy` support (#5).
+* Migrate to OCaml 5.2 AST for ppxlib 0.36.0 (#6).
 
 ## 0.1.2
 * Add inline record support (#1).
