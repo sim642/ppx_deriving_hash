@@ -23,7 +23,6 @@ type refd = int ref [@@deriving hash]
 type lazyd = int lazy_t [@@deriving hash]
 type 'a poly = Nil | Cons of 'a * 'a poly [@@deriving hash]
 
-(* Recursive type via a parametrized alias (the hash-consing shape). *)
 type 'a hash_consed = { node : 'a; tag : int }
 
 let hash_hash_consed _ x = x.tag
@@ -31,8 +30,24 @@ let hash_hash_consed _ x = x.tag
 type tree_kind = TLeaf of int | TBranch of tree * tree
 and tree = tree_kind hash_consed [@@deriving hash]
 
-(* Override via [@hash]. *)
+
 type wrapped = { raw : (int[@hash fun x -> x + 1]) } [@@deriving hash]
+type pvar = [ `A | `B of int | `C of string ] [@@deriving hash]
+type inline = Inl of { x : int; y : string } | Plain [@@deriving hash]
+
+type units = unit [@@deriving hash]
+type i32 = int32 [@@deriving hash]
+type i64 = int64 [@@deriving hash]
+
+type ('a, 'b) two = Two of 'a * 'b [@@deriving hash]
+
+type pairs = (int * int) list [@@deriving hash]
+type rgb_arr = rgb array [@@deriving hash]
+
+type ints = int list [@@deriving hash]
+type 'a opt_alias = 'a option [@@deriving hash]
+
+type wrapped_list = (int[@hash fun x -> x + 1]) list [@@deriving hash]
 
 let failures = ref 0
 
@@ -84,6 +99,43 @@ let () =
   check "tree via alias" (hash_tree t = t.tag);
   check "hash override applied" (hash_wrapped { raw = 10 } <> hash_wrapped { raw = 11 });
 
+  (* Polymorphic variants *)
+  check "poly variant equal" (hash_pvar (`B 1) = hash_pvar (`B 1));
+  check "poly variant differ" (hash_pvar (`B 1) <> hash_pvar (`C "x"));
+  check "poly variant const differ" (hash_pvar `A <> hash_pvar (`B 1));
+
+  (* Inline record in a constructor *)
+  check "inline record equal"
+    (hash_inline (Inl { x = 1; y = "a" }) = hash_inline (Inl { x = 1; y = "a" }));
+  check "inline record differ" (hash_inline (Inl { x = 1; y = "a" }) <> hash_inline Plain);
+
+  (* Extra primitive leaves *)
+  check "unit" (hash_units () = hash_units ());
+  check "int32" (hash_i32 7l = hash_i32 7l && hash_i32 7l <> hash_i32 8l);
+  check "int64" (hash_i64 7L = hash_i64 7L && hash_i64 7L <> hash_i64 8L);
+
+  (* Two type parameters *)
+  check "two params equal"
+    (hash_two (fun x -> x) Char.code (Two (1, 'a'))
+     = hash_two (fun x -> x) Char.code (Two (1, 'a')));
+  check "two params differ"
+    (hash_two (fun x -> x) Char.code (Two (1, 'a'))
+     <> hash_two (fun x -> x) Char.code (Two (1, 'b')));
+
+  (* Structured elements inside containers *)
+  check "pairs equal" (hash_pairs [ (1, 2); (3, 4) ] = hash_pairs [ (1, 2); (3, 4) ]);
+  check "pairs differ" (hash_pairs [ (1, 2) ] <> hash_pairs [ (2, 1) ]);
+  check "rgb array equal"
+    (hash_rgb_arr [| { r = 1; g = 2; b = 3 } |] = hash_rgb_arr [| { r = 1; g = 2; b = 3 } |]);
+
+  (* Alias expanding to a bare application *)
+  check "int list alias" (hash_ints [ 1; 2; 3 ] = hash_ints [ 1; 2; 3 ]);
+  check "option alias"
+    (hash_opt_alias (fun x -> x) (Some 1) <> hash_opt_alias (fun x -> x) None);
+
+  (* [@hash] override on a container element *)
+  check "override in list applied" (hash_wrapped_list [ 10 ] <> hash_wrapped_list [ 11 ]);
+
   (* Allocation-freedom *)
   check_no_alloc "expr" hash_expr e;
   check_no_alloc "nested" hash_nested [| [ [ 1; 2; 3 ]; [ 4; 5 ] ]; [ [ 6 ] ] |];
@@ -91,6 +143,17 @@ let () =
   check_no_alloc "pair" hash_pair (4, 5);
   check_no_alloc "tree" hash_tree t;
   check_no_alloc "list" (hash_poly (fun x -> x)) (Cons (1, Cons (2, Cons (3, Nil))));
+  (* primitives mixed (incl. a float field, which must not re-box on read) *)
+  check_no_alloc "prim" hash_prim { i = 1; b = true; c = 'a'; s = "x"; f = 3.5 };
+  check_no_alloc "option" hash_opt (Some 5);
+  check_no_alloc "ref" hash_refd (ref 7);
+  check_no_alloc "lazy" hash_lazyd (lazy 9);
+  check_no_alloc "poly variant" hash_pvar (`B 1);
+  check_no_alloc "inline record" hash_inline (Inl { x = 1; y = "a" });
+  check_no_alloc "two params" (hash_two (fun x -> x) Char.code) (Two (1, 'a'));
+  check_no_alloc "pairs" hash_pairs [ (1, 2); (3, 4); (5, 6) ];
+  check_no_alloc "rgb array" hash_rgb_arr [| { r = 1; g = 2; b = 3 } |];
+  check_no_alloc "override in list" hash_wrapped_list [ 10; 20; 30 ];
 
   if !failures = 0 then print_endline "All tests passed."
   else (
