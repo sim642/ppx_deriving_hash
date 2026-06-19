@@ -1,0 +1,5 @@
+(executable
+ (name bench)
+ (libraries unix)
+ (preprocess
+  (pps ppx_deriving_hash)))

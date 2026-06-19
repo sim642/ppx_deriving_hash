@@ -1,3 +1,7 @@
+## 0.1.4
+* Make derived hash functions allocation-free.
+* Fix a bug where hash functions couldn't be used on the RHS of `let rec` bindings.
+
 ## 0.1.3
 * Add `lazy` support (#5).
 * Migrate to OCaml 5.2 AST for ppxlib 0.36.0 (#6).

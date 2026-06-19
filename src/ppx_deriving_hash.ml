@@ -21,10 +21,23 @@ let hash_reduce ~loc = function
 
 let hash_variant ~loc i = eint ~loc i
 
+(* Apply a hash function [f] to a value [x], flattening when [f] is itself an
+   application (e.g. [List.fold_left g 0] or [hash_t poly_a]) so the result is a
+   single saturated application. This avoids materializing the intermediate
+   partial-application closure, which would otherwise be allocated on every
+   call. *)
+let app ~loc f x =
+  match f.pexp_desc with
+  | Pexp_apply (g, args) -> pexp_apply ~loc g (args @ [ (Nolabel, x) ])
+  | _ -> pexp_apply ~loc f [ (Nolabel, x) ]
+
 let rec expr ~loc ~quoter ct =
   match Attribute.get attr_hash ct with
   | Some hash ->
-    Ppx_deriving.quote ~quoter hash
+    (* Inline the override directly. Hoisting it into a local binding (via the
+       quoter) would make any enclosing fold lambda capture that local,
+       forcing a per-call closure allocation. *)
+    hash
   | None ->
     let expr = expr ~quoter in
     match ct with
@@ -44,30 +57,38 @@ let rec expr ~loc ~quoter ct =
     | [%type: unit] ->
       [%expr fun () -> [%e hash_empty ~loc]]
     | [%type: [%t? a] ref] ->
-      [%expr fun x -> [%e expr ~loc a] !x]
+      [%expr fun x -> [%e app ~loc (expr ~loc a) [%expr !x]]]
     | [%type: [%t? a] option] ->
       [%expr function
         (* like variants *)
         | None -> [%e hash_variant ~loc 0]
-        | Some x -> [%e hash_reduce2 ~loc (hash_variant ~loc 1) [%expr [%e expr ~loc a] x]]
+        | Some x -> [%e hash_reduce2 ~loc (hash_variant ~loc 1) (app ~loc (expr ~loc a) [%expr x])]
       ]
     | [%type: [%t? a] list] ->
-      [%expr List.fold_left (fun a b -> [%e hash_reduce2 ~loc [%expr a] [%expr [%e expr ~loc a] b]]) [%e hash_empty ~loc]]
+      let elt = expr ~loc a in
+      (* The fold lambda references only [elt]; for a named/primitive element
+         hash it is therefore a closed term, allocated statically rather than
+         rebuilt per call. The element is applied via [app] so that nested
+         containers stay flat (saturated) applications. *)
+      [%expr Stdlib.List.fold_left
+          (fun acc__ x__ -> [%e hash_reduce2 ~loc [%expr acc__] (app ~loc elt [%expr x__])])
+          [%e hash_empty ~loc]]
     | [%type: [%t? a] array] ->
-      [%expr Array.fold_left (fun a b -> [%e hash_reduce2 ~loc [%expr a] [%expr [%e expr ~loc a] b]]) [%e hash_empty ~loc]]
+      let elt = expr ~loc a in
+      [%expr Stdlib.Array.fold_left
+          (fun acc__ x__ -> [%e hash_reduce2 ~loc [%expr acc__] (app ~loc elt [%expr x__])])
+          [%e hash_empty ~loc]]
     | [%type: [%t? a] lazy_t]
     | [%type: [%t? a] Lazy.t] ->
-      [%expr fun (lazy x) -> [%e expr ~loc a] x]
+      [%expr fun (lazy x) -> [%e app ~loc (expr ~loc a) [%expr x]]]
     | {ptyp_desc = Ptyp_constr ({txt = lid; loc}, args); _} ->
       let ident = pexp_ident ~loc {loc; txt = Ppx_deriving.mangle_lid mangle_affix lid} in
-      let ident = Ppx_deriving.quote ~quoter ident in
-      let apply_args =
-        args
-        |> List.map (fun ct ->
-            (Nolabel, expr ~loc ct)
-          )
-      in
-      pexp_apply ~loc ident apply_args
+      (* Reference the hash function directly (no quoter alias): keeps enclosing
+         fold lambdas closed, hence allocation-free. The (possibly partial)
+         application is saturated at the use site by [app]. *)
+      (match args with
+       | [] -> ident
+       | _ -> pexp_apply ~loc ident (List.map (fun ct -> (Nolabel, expr ~loc ct)) args))
     | {ptyp_desc = Ptyp_tuple comps; _} ->
       expr_tuple ~loc ~quoter comps
     | {ptyp_desc = Ptyp_variant (rows, Closed, None); _} ->
@@ -93,7 +114,7 @@ and expr_poly_variant ~loc ~quoter rows =
         let label_fun = expr ~loc ~quoter ct in
         case ~lhs:(ppat_variant ~loc label (Some [%pat? x]))
           ~guard:None
-          ~rhs:(hash_reduce2 ~loc variant_const [%expr [%e label_fun] x])
+          ~rhs:(hash_reduce2 ~loc variant_const (app ~loc label_fun [%expr x]))
       | _ ->
         Location.raise_errorf ~loc "other variant"
     )
@@ -119,7 +140,7 @@ and expr_variant ~loc ~quoter constrs =
               (i, expr ~loc ~quoter comp_type)
             )
           |> List.map (fun (i, label_fun) ->
-              [%expr [%e label_fun] [%e label_field ~loc "x" i]]
+              app ~loc label_fun (label_field ~loc "x" i)
             )
           |> hash_fold ~loc variant_const
         in
@@ -145,7 +166,7 @@ and expr_variant ~loc ~quoter constrs =
               (label, expr ~loc ~quoter pld_type)
             )
           |> List.map (fun (label, label_fun) ->
-              [%expr [%e label_fun] [%e label_field ~loc x_expr label]]
+              app ~loc label_fun (label_field ~loc x_expr label)
             )
           |> hash_fold ~loc variant_const
         in
@@ -168,7 +189,7 @@ and expr_record ~loc ~quoter lds =
         (label, expr ~loc ~quoter pld_type)
       )
     |> List.map (fun (label, label_fun) ->
-        [%expr [%e label_fun] [%e label_field ~loc x_expr label]]
+        app ~loc label_fun (label_field ~loc x_expr label)
       )
     |> hash_reduce ~loc
   in
@@ -185,7 +206,7 @@ and expr_tuple ~loc ~quoter comps =
         (i, expr ~loc ~quoter comp_type)
       )
     |> List.map (fun (i, label_fun) ->
-        [%expr [%e label_fun] [%e label_field ~loc "x" i]]
+        app ~loc label_fun (label_field ~loc "x" i)
       )
     |> hash_reduce ~loc
   in
@@ -201,7 +222,11 @@ and expr_tuple ~loc ~quoter comps =
 
 let expr_declaration ~loc ~quoter td = match td with
   | {ptype_kind = Ptype_abstract; ptype_manifest = Some ct; _} ->
-    expr ~loc ~quoter ct
+    let e = expr ~loc ~quoter ct in
+    (* Eta-expand to obtain a valid function literal. *)
+    (match e.pexp_desc with
+     | Pexp_apply _ -> [%expr fun x__ -> [%e app ~loc e [%expr x__]]]
+     | _ -> e)
   | {ptype_kind = Ptype_abstract; _} ->
     Location.raise_errorf ~loc "Cannot derive accessors for abstract types"
   | {ptype_kind = Ptype_variant constrs; _} ->
@@ -218,18 +243,27 @@ let typ ~loc td =
     td
     [%type: [%t ct] -> int]
 
+(* Fixpoint of coalesce_arity *)
+let rec coalesce_arity_full e =
+  let e' = coalesce_arity e in
+  if e' == e then e else coalesce_arity_full e'
+
 let generate_impl ~ctxt (_rec_flag, type_declarations) =
   let loc = Expansion_context.Deriver.derived_item_loc ctxt in
   type_declarations
   |> List.map (fun td ->
       let quoter = Ppx_deriving.create_quoter () in
       let expr = expr_declaration ~loc ~quoter td in
-      let expr = Ppx_deriving.sanitize ~quoter expr in
       let expr = Ppx_deriving.poly_fun_of_type_decl td expr in
+      (* Merge the [poly_*] parameters and the matched value into a single
+         function of the full arity (avoids allocation). *)
+      let expr = coalesce_arity_full expr in
+      (* Deliberately no wrapped in [Ppx_deriving.sanitize] as it breaks arity merging.
+         The generated code only uses plain Stdlib. *)
       let ct = typ ~loc td in
       let pat = ppat_var ~loc {loc; txt = Ppx_deriving.mangle_type_decl mangle_affix td} in
       let pat = ppat_constraint ~loc pat ct in
-      Ast_helper.Vb.mk ~loc ~attrs:[Ppx_deriving.attr_warning [%expr "-39"]] pat expr
+      Ast_helper.Vb.mk ~loc ~attrs:[Ppx_deriving.attr_warning [%expr "-a"]] pat expr
     )
   |> Ast_helper.Str.value ~loc Recursive
   |> fun v -> [v]
