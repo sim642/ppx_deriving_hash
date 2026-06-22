@@ -21,16 +21,6 @@ let hash_reduce ~loc = function
 
 let hash_variant ~loc i = eint ~loc i
 
-(* Apply a hash function [f] to a value [x], flattening when [f] is itself an
-   application (e.g. [List.fold_left g 0] or [hash_t poly_a]) so the result is a
-   single saturated application. This avoids materializing the intermediate
-   partial-application closure, which would otherwise be allocated on every
-   call. *)
-let app ~loc f x =
-  match f.pexp_desc with
-  | Pexp_apply (g, args) -> pexp_apply ~loc g (args @ [ (Nolabel, x) ])
-  | _ -> pexp_apply ~loc f [ (Nolabel, x) ]
-
 let rec expr ~loc ~quoter ct =
   match Attribute.get attr_hash ct with
   | Some hash ->
@@ -57,38 +47,37 @@ let rec expr ~loc ~quoter ct =
     | [%type: unit] ->
       [%expr fun () -> [%e hash_empty ~loc]]
     | [%type: [%t? a] ref] ->
-      [%expr fun x -> [%e app ~loc (expr ~loc a) [%expr !x]]]
+      [%expr fun x -> [%e expr ~loc a] !x]
     | [%type: [%t? a] option] ->
       [%expr function
         (* like variants *)
         | None -> [%e hash_variant ~loc 0]
-        | Some x -> [%e hash_reduce2 ~loc (hash_variant ~loc 1) (app ~loc (expr ~loc a) [%expr x])]
+        | Some x -> [%e hash_reduce2 ~loc (hash_variant ~loc 1) [%expr [%e expr ~loc a] x]]
       ]
     | [%type: [%t? a] list] ->
       let elt = expr ~loc a in
       (* The fold lambda references only [elt]; for a named/primitive element
-         hash it is therefore a closed term, allocated statically rather than
-         rebuilt per call. The element is applied via [app] so that nested
-         containers stay flat (saturated) applications. *)
+         hash (no quoter alias) it is therefore a closed term, allocated
+         statically rather than rebuilt per call. Fresh [acc__]/[x__] names
+         avoid capturing any binding that an inline [@hash] element override
+         might mention. *)
       [%expr Stdlib.List.fold_left
-          (fun acc__ x__ -> [%e hash_reduce2 ~loc [%expr acc__] (app ~loc elt [%expr x__])])
+          (fun acc__ x__ -> [%e hash_reduce2 ~loc [%expr acc__] [%expr [%e elt] x__]])
           [%e hash_empty ~loc]]
     | [%type: [%t? a] array] ->
       let elt = expr ~loc a in
       [%expr Stdlib.Array.fold_left
-          (fun acc__ x__ -> [%e hash_reduce2 ~loc [%expr acc__] (app ~loc elt [%expr x__])])
+          (fun acc__ x__ -> [%e hash_reduce2 ~loc [%expr acc__] [%expr [%e elt] x__]])
           [%e hash_empty ~loc]]
     | [%type: [%t? a] lazy_t]
     | [%type: [%t? a] Lazy.t] ->
-      [%expr fun (lazy x) -> [%e app ~loc (expr ~loc a) [%expr x]]]
+      [%expr fun (lazy x) -> [%e expr ~loc a] x]
     | {ptyp_desc = Ptyp_constr ({txt = lid; loc}, args); _} ->
       let ident = pexp_ident ~loc {loc; txt = Ppx_deriving.mangle_lid mangle_affix lid} in
       (* Reference the hash function directly (no quoter alias): keeps enclosing
-         fold lambdas closed, hence allocation-free. The (possibly partial)
-         application is saturated at the use site by [app]. *)
-      (match args with
-       | [] -> ident
-       | _ -> pexp_apply ~loc ident (List.map (fun ct -> (Nolabel, expr ~loc ct)) args))
+         fold lambdas closed, hence allocation-free. [pexp_apply] returns
+         [ident] unchanged when there are no type arguments. *)
+      pexp_apply ~loc ident (List.map (fun ct -> (Nolabel, expr ~loc ct)) args)
     | {ptyp_desc = Ptyp_tuple comps; _} ->
       expr_tuple ~loc ~quoter comps
     | {ptyp_desc = Ptyp_variant (rows, Closed, None); _} ->
@@ -114,7 +103,7 @@ and expr_poly_variant ~loc ~quoter rows =
         let label_fun = expr ~loc ~quoter ct in
         case ~lhs:(ppat_variant ~loc label (Some [%pat? x]))
           ~guard:None
-          ~rhs:(hash_reduce2 ~loc variant_const (app ~loc label_fun [%expr x]))
+          ~rhs:(hash_reduce2 ~loc variant_const [%expr [%e label_fun] x])
       | _ ->
         Location.raise_errorf ~loc "other variant"
     )
@@ -140,7 +129,7 @@ and expr_variant ~loc ~quoter constrs =
               (i, expr ~loc ~quoter comp_type)
             )
           |> List.map (fun (i, label_fun) ->
-              app ~loc label_fun (label_field ~loc "x" i)
+              [%expr [%e label_fun] [%e label_field ~loc "x" i]]
             )
           |> hash_fold ~loc variant_const
         in
@@ -166,7 +155,7 @@ and expr_variant ~loc ~quoter constrs =
               (label, expr ~loc ~quoter pld_type)
             )
           |> List.map (fun (label, label_fun) ->
-              app ~loc label_fun (label_field ~loc x_expr label)
+              [%expr [%e label_fun] [%e label_field ~loc x_expr label]]
             )
           |> hash_fold ~loc variant_const
         in
@@ -189,7 +178,7 @@ and expr_record ~loc ~quoter lds =
         (label, expr ~loc ~quoter pld_type)
       )
     |> List.map (fun (label, label_fun) ->
-        app ~loc label_fun (label_field ~loc x_expr label)
+        [%expr [%e label_fun] [%e label_field ~loc x_expr label]]
       )
     |> hash_reduce ~loc
   in
@@ -206,7 +195,7 @@ and expr_tuple ~loc ~quoter comps =
         (i, expr ~loc ~quoter comp_type)
       )
     |> List.map (fun (i, label_fun) ->
-        app ~loc label_fun (label_field ~loc "x" i)
+        [%expr [%e label_fun] [%e label_field ~loc "x" i]]
       )
     |> hash_reduce ~loc
   in
@@ -223,9 +212,13 @@ and expr_tuple ~loc ~quoter comps =
 let expr_declaration ~loc ~quoter td = match td with
   | {ptype_kind = Ptype_abstract; ptype_manifest = Some ct; _} ->
     let e = expr ~loc ~quoter ct in
-    (* Eta-expand to obtain a valid function literal. *)
+    (* When the alias expands to an application (e.g. a parametrized alias such
+       as [type t = u hash_consed], or an alias to a container), eta-expand it
+       into a function literal. A bare application is not a legal right-hand
+       side of the [let rec] this deriver emits; the [fun x__ -> _ x__] wrapper
+       is. *)
     (match e.pexp_desc with
-     | Pexp_apply _ -> [%expr fun x__ -> [%e app ~loc e [%expr x__]]]
+     | Pexp_apply _ -> [%expr fun x__ -> [%e e] x__]
      | _ -> e)
   | {ptype_kind = Ptype_abstract; _} ->
     Location.raise_errorf ~loc "Cannot derive accessors for abstract types"
