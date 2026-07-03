@@ -1,4 +1,5 @@
 ## Unreleased
+* Fix expressions not allowed in `let rec` using eta-expansion (#7).
 * Fix missing locations due to `default_loc`.
 
 ## 0.1.3
