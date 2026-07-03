@@ -1,4 +1,5 @@
 (test
  (name test)
+ (libraries ounit2)
  (preprocess
   (pps ppx_deriving_hash)))
