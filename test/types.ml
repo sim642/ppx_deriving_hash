@@ -2,6 +2,7 @@
 
 type rgb = { r : int; g : int; b : int } [@@deriving hash]
 type 'a poly = Nil | Cons of 'a * 'a poly [@@deriving hash]
+type ('a, 'b) poly2 = Nil2 | Cons2 of 'a * 'b * ('a, 'b) poly2 [@@deriving hash]
 
 type 'a hash_consed = { node : 'a; tag : int }
 let hash_hash_consed _ x = x.tag

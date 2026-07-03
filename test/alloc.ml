@@ -21,6 +21,7 @@ let test_no_alloc hash x _ctxt =
 let tests =
   "alloc" >::: [
     "list" >:: test_no_alloc (hash_poly (fun x -> x)) (Cons (1, Cons (2, Cons (3, Nil))));
+    "list2" >:: test_no_alloc (hash_poly2 (fun x -> x) (fun x -> Char.code x)) (Cons2 (1, 'a', Cons2 (2, 'b', Cons2 (3, 'c', Nil2))));
     "rgb array" >:: test_no_alloc hash_rgb_arr [| { r = 1; g = 2; b = 3 } |];
     "override in list" >:: test_no_alloc hash_wrapped_list [ 10; 20; 30 ];
   ]
