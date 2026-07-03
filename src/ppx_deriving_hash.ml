@@ -230,7 +230,7 @@ let generate_impl ~ctxt (_rec_flag, type_declarations) =
         (* Ensure expr is statically constructive by eta-expanding non-funs.
            See https://github.com/ocaml-ppx/ppx_deriving/pull/252. *)
         match expr with
-        | { pexp_desc = Pexp_function (_ :: _, _, _); _ } -> expr
+        | { pexp_desc = Pexp_function _; _ } -> expr
         | _ -> [%expr fun x -> [%e expr] x]
       in
       let expr = Ppx_deriving.sanitize ~quoter expr in
