@@ -13,3 +13,13 @@ and tree = tree_kind hash_consed [@@deriving hash]
 type rgb_arr = rgb array [@@deriving hash]
 
 type wrapped_list = (int[@hash fun x -> x + 1]) list [@@deriving hash]
+
+
+(* From Goblint. *)
+
+(* Generating a [function] for this and eta-expanding, type-directed constructor disambiguation no longer works. *)
+type t =
+  | Error
+  | Warning
+  | Safe
+[@@deriving hash]
