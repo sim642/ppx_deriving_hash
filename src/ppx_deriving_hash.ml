@@ -233,7 +233,6 @@ let generate_impl ~ctxt (_rec_flag, type_declarations) =
         | { pexp_desc = Pexp_function (_ :: _, _, _); _ } -> expr
         | _ -> [%expr fun x -> [%e expr] x]
       in
-      let expr = coalesce_arity expr in (* Avoid intermediate closure allocations due to syntactic function arity (since OCaml 5.2). *) (* TODO: need to coalesce recursively? (e.g. for multi-type-parameter types?)*)
       let expr = Ppx_deriving.sanitize ~quoter expr in
       let ct = typ ~loc td in
       let pat = ppat_var ~loc {loc; txt = Ppx_deriving.mangle_type_decl mangle_affix td} in
