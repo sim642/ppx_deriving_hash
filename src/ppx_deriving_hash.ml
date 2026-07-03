@@ -220,6 +220,7 @@ let typ ~loc td =
 
 let generate_impl ~ctxt (_rec_flag, type_declarations) =
   let loc = Expansion_context.Deriver.derived_item_loc ctxt in
+  Ast_helper.with_default_loc loc @@ fun () -> (* ppx_deriving_hash shouldn't be using default_loc, but some of the Ppx_deriving API calls might *)
   type_declarations
   |> List.map (fun td ->
       let quoter = Ppx_deriving.create_quoter () in
@@ -238,6 +239,7 @@ let impl_generator = Deriving.Generator.V2.make_noarg generate_impl
 
 let generate_intf ~ctxt (_rec_flag, type_declarations): signature_item list =
   let loc = Expansion_context.Deriver.derived_item_loc ctxt in
+  Ast_helper.with_default_loc loc @@ fun () -> (* ppx_deriving_hash shouldn't be using default_loc, but some of the Ppx_deriving API calls might *)
   type_declarations
   |> List.map (fun td ->
       let ct = typ ~loc td in
