@@ -1,3 +1,5 @@
+(include_subdirs qualified)
+
 (test
  (name test)
  (libraries ounit2)

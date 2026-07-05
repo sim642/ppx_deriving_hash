@@ -1,4 +1,4 @@
-(lang dune 2.8)
+(lang dune 3.7)
 (name ppx_deriving_hash)
 (generate_opam_files true)
 (source (github sim642/ppx_deriving_hash))
