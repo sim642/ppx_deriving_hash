@@ -218,7 +218,7 @@ let typ ~loc td =
     td
     [%type: [%t ct] -> int]
 
-let generate_impl ~ctxt (_rec_flag, type_declarations) =
+let generate_impl ~ctxt (rec_flag, type_declarations) =
   let loc = Expansion_context.Deriver.derived_item_loc ctxt in
   Ast_helper.with_default_loc loc @@ fun () -> (* ppx_deriving_hash shouldn't be using default_loc, but some of the Ppx_deriving API calls might *)
   type_declarations
@@ -239,7 +239,7 @@ let generate_impl ~ctxt (_rec_flag, type_declarations) =
       let pat = ppat_constraint ~loc pat ct in
       Ast_helper.Vb.mk ~loc ~attrs:[Ppx_deriving.attr_warning [%expr "-39"]] pat expr
     )
-  |> Ast_helper.Str.value ~loc Recursive
+  |> Ast_helper.Str.value ~loc (really_recursive rec_flag type_declarations)
   |> fun v -> [v]
 
 let impl_generator = Deriving.Generator.V2.make_noarg generate_impl
