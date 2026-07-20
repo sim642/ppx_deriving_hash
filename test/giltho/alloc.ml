@@ -29,9 +29,7 @@ let tests =
       "inline record" >:: test_no_alloc hash_inline (Inl { x = 1; y = "a" });
       "two params" >:: test_no_alloc (hash_two (fun x -> x) Char.code) (Two (1, 'a'));
       "pairs" >:: test_no_alloc hash_pairs [ (1, 2); (3, 4); (5, 6) ];
-#if OCAML_VERSION < (5, 2, 0)
       "rgb array" >:: test_no_alloc hash_rgb_arr [| { r = 1; g = 2; b = 3 } |];
       "override in list" >:: test_no_alloc hash_wrapped_list [ 10; 20; 30 ];
-#endif
     ];
   ]
