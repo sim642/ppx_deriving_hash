@@ -1,6 +1,7 @@
 ## Unreleased
 * Fix expressions not allowed in `let rec` using eta-expansion (#7).
 * Optimize syntactic function arity on OCaml >= 5.2 (#7).
+* Use `Ppxlib.really_recursive` for implementation (#8).
 * Fix missing locations due to `default_loc`.
 * Add tests (#7).
 
