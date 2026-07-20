@@ -13,4 +13,5 @@
  (depends
   (ppxlib (>= 0.36.0))
   (ppx_deriving (>= 5.0))
-  (ounit2 :with-test)))
+  (ounit2 :with-test)
+  (cppo :with-test)))

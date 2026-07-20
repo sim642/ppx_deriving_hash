@@ -4,4 +4,6 @@
  (name test)
  (libraries ounit2)
  (preprocess
-  (pps ppx_deriving_hash)))
+  (per_module
+   ((pps ppx_deriving_hash) types) ; https://github.com/ocaml/dune/issues/15578
+   ((action (run cppo -V OCAML:%{ocaml_version} %{input-file})) alloc)))) ; https://github.com/ocaml/dune/issues/15578
