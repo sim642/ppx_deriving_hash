@@ -59,6 +59,7 @@ let rec expr ~loc ~quoter ct =
     | [%type: [%t? a] Lazy.t] ->
       [%expr fun (lazy x) -> [%e expr ~loc a] x]
     | {ptyp_desc = Ptyp_constr ({txt = lid; loc}, args); _} ->
+      let loc = {loc with loc_ghost = true} in
       let ident = pexp_ident ~loc {loc; txt = Ppx_deriving.mangle_lid mangle_affix lid} in
       let ident = Ppx_deriving.quote ~quoter ident in
       let apply_args =
@@ -82,12 +83,14 @@ and expr_poly_variant ~loc ~quoter rows =
   |> List.map (fun {prf_desc; _} ->
       match prf_desc with
       | Rtag ({txt = label; loc}, true, []) ->
+        let loc = {loc with loc_ghost = true} in
         let variant_i = Ppx_deriving.hash_variant label in
         let variant_const = hash_variant ~loc variant_i in
         case ~lhs:(ppat_variant ~loc label None)
           ~guard:None
           ~rhs:variant_const
       | Rtag ({txt = label; loc}, false, [ct]) ->
+        let loc = {loc with loc_ghost = true} in
         let variant_i = Ppx_deriving.hash_variant label in
         let variant_const = hash_variant ~loc variant_i in
         let label_fun = expr ~loc ~quoter ct in
@@ -102,6 +105,7 @@ and expr_poly_variant ~loc ~quoter rows =
 and expr_variant ~loc ~quoter constrs =
   constrs
   |> List.mapi (fun variant_i {pcd_name = {txt = label; loc}; pcd_args; pcd_res; _} ->
+      let loc = {loc with loc_ghost = true} in
       let variant_const = hash_variant ~loc variant_i in
       match pcd_res, pcd_args with
       | None, Pcstr_tuple [] ->
@@ -142,6 +146,7 @@ and expr_variant ~loc ~quoter constrs =
         let body x_expr =
           lds
           |> List.map (fun {pld_name = {txt = label; loc}; pld_type; _} ->
+              let loc = {loc with loc_ghost = true} in
               (label, expr ~loc ~quoter pld_type)
             )
           |> List.map (fun (label, label_fun) ->
@@ -165,6 +170,7 @@ and expr_record ~loc ~quoter lds =
   let body x_expr =
     lds
     |> List.map (fun {pld_name = {txt = label; loc}; pld_type; _} ->
+        let loc = {loc with loc_ghost = true} in
         (label, expr ~loc ~quoter pld_type)
       )
     |> List.map (fun (label, label_fun) ->
@@ -220,6 +226,7 @@ let typ ~loc td =
 
 let generate_impl ~ctxt (rec_flag, type_declarations) =
   let loc = Expansion_context.Deriver.derived_item_loc ctxt in
+  let loc = {loc with loc_ghost = true} in
   Ast_helper.with_default_loc loc @@ fun () -> (* ppx_deriving_hash shouldn't be using default_loc, but some of the Ppx_deriving API calls might *)
   type_declarations
   |> List.map (fun td ->
@@ -246,6 +253,7 @@ let impl_generator = Deriving.Generator.V2.make_noarg generate_impl
 
 let generate_intf ~ctxt (_rec_flag, type_declarations): signature_item list =
   let loc = Expansion_context.Deriver.derived_item_loc ctxt in
+  let loc = {loc with loc_ghost = true} in
   Ast_helper.with_default_loc loc @@ fun () -> (* ppx_deriving_hash shouldn't be using default_loc, but some of the Ppx_deriving API calls might *)
   type_declarations
   |> List.map (fun td ->
@@ -256,6 +264,7 @@ let generate_intf ~ctxt (_rec_flag, type_declarations): signature_item list =
 let intf_generator = Deriving.Generator.V2.make_noarg generate_intf
 
 let extension ~loc ~path:_ ct =
+  let loc = {loc with loc_ghost = true} in
   let quoter = Ppx_deriving.create_quoter () in
   Ppx_deriving.sanitize ~quoter (expr ~loc ~quoter ct)
 

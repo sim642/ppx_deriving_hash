@@ -3,6 +3,7 @@
 * Optimize syntactic function arity on OCaml >= 5.2 (#7).
 * Use `Ppxlib.really_recursive` for implementation (#8).
 * Fix missing locations due to `default_loc`.
+* Mark locations as `loc_ghost`.
 * Add tests (#7).
 
 ## 0.1.3
