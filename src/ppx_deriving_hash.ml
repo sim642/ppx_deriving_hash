@@ -265,6 +265,7 @@ let intf_generator = Deriving.Generator.V2.make_noarg generate_intf
 
 let extension ~loc ~path:_ ct =
   let loc = {loc with loc_ghost = true} in
+  Ast_helper.with_default_loc loc @@ fun () -> (* ppx_deriving_hash shouldn't be using default_loc, but some of the Ppx_deriving API calls might *)
   let quoter = Ppx_deriving.create_quoter () in
   Ppx_deriving.sanitize ~quoter (expr ~loc ~quoter ct)
 
