@@ -21,12 +21,67 @@ let hash_reduce ~loc = function
 
 let hash_variant ~loc i = eint ~loc i
 
-let rec expr ~loc ~quoter ct =
+let apply ~loc fn arg =
+  match fn with
+  | {pexp_desc = Pexp_function ([{pparam_desc = Pparam_val (Nolabel, None, pat); _}], None, Pfunction_body body); pexp_attributes = []; _} ->
+    [%expr let [%p pat] = [%e arg] in [%e body]]
+  | {pexp_desc = Pexp_function ([], None, Pfunction_cases (cases, _, [])); pexp_attributes = []; _} ->
+    pexp_match ~loc arg cases
+  | _ ->
+    [%expr [%e fn] [%e arg]]
+
+(* Auxiliary functions hoisted out of the derived function of a type
+   declaration. Lists and arrays are hashed by a separate function that is
+   always fully applied, to avoid allocations. *)
+type aux = {
+  td : type_declaration;
+  name : string;
+  mutable defs : (string * expression) list;
+  mutable count : int;
+}
+
+let hoist ~loc aux body =
+  let name = Printf.sprintf "%s__%d" aux.name aux.count in
+  aux.count <- aux.count + 1;
+  let self = Ppx_deriving.poly_apply_of_type_decl aux.td (evar ~loc name) in
+  let def = Ppx_deriving.poly_fun_of_type_decl aux.td (body self) in
+  aux.defs <- (name, def) :: aux.defs;
+  self
+
+let expr_list ~loc ?aux elt =
+  let step a b = hash_reduce2 ~loc a (apply ~loc elt b) in
+  match aux with
+  | Some aux ->
+    let self =
+      hoist ~loc aux (fun self ->
+          [%expr fun a -> function
+            | [] -> a
+            | b :: l -> [%e self] [%e step [%expr a] [%expr b]] l])
+    in
+    [%expr fun x -> [%e self] [%e hash_empty ~loc] x]
+  | None ->
+    [%expr List.fold_left (fun a b -> [%e step [%expr a] [%expr b]]) [%e hash_empty ~loc]]
+
+let expr_array ~loc ?aux elt =
+  let step a b = hash_reduce2 ~loc a (apply ~loc elt b) in
+  match aux with
+  | Some aux ->
+    let self =
+      hoist ~loc aux (fun self ->
+          [%expr fun a i x ->
+            if i = Array.length x then a
+            else [%e self] [%e step [%expr a] [%expr Array.get x i]] (i + 1) x])
+    in
+    [%expr fun x -> [%e self] [%e hash_empty ~loc] 0 x]
+  | None ->
+    [%expr Array.fold_left (fun a b -> [%e step [%expr a] [%expr b]]) [%e hash_empty ~loc]]
+
+let rec expr ~loc ~quoter ?aux ct =
   match Attribute.get attr_hash ct with
   | Some hash ->
     Ppx_deriving.quote ~quoter hash
   | None ->
-    let expr = expr ~quoter in
+    let expr = expr ~quoter ?aux in
     match ct with
     | [%type: float]
     | [%type: string] ->
@@ -44,20 +99,20 @@ let rec expr ~loc ~quoter ct =
     | [%type: unit] ->
       [%expr fun () -> [%e hash_empty ~loc]]
     | [%type: [%t? a] ref] ->
-      [%expr fun x -> [%e expr ~loc a] !x]
+      [%expr fun x -> [%e apply ~loc (expr ~loc a) [%expr !x]]]
     | [%type: [%t? a] option] ->
       [%expr function
         (* like variants *)
         | None -> [%e hash_variant ~loc 0]
-        | Some x -> [%e hash_reduce2 ~loc (hash_variant ~loc 1) [%expr [%e expr ~loc a] x]]
+        | Some x -> [%e hash_reduce2 ~loc (hash_variant ~loc 1) (apply ~loc (expr ~loc a) [%expr x])]
       ]
     | [%type: [%t? a] list] ->
-      [%expr List.fold_left (fun a b -> [%e hash_reduce2 ~loc [%expr a] [%expr [%e expr ~loc a] b]]) [%e hash_empty ~loc]]
+      expr_list ~loc ?aux (expr ~loc a)
     | [%type: [%t? a] array] ->
-      [%expr Array.fold_left (fun a b -> [%e hash_reduce2 ~loc [%expr a] [%expr [%e expr ~loc a] b]]) [%e hash_empty ~loc]]
+      expr_array ~loc ?aux (expr ~loc a)
     | [%type: [%t? a] lazy_t]
     | [%type: [%t? a] Lazy.t] ->
-      [%expr fun (lazy x) -> [%e expr ~loc a] x]
+      [%expr fun (lazy x) -> [%e apply ~loc (expr ~loc a) [%expr x]]]
     | {ptyp_desc = Ptyp_constr ({txt = lid; loc}, args); _} ->
       let loc = {loc with loc_ghost = true} in
       let ident = pexp_ident ~loc {loc; txt = Ppx_deriving.mangle_lid mangle_affix lid} in
@@ -70,15 +125,15 @@ let rec expr ~loc ~quoter ct =
       in
       pexp_apply ~loc ident apply_args
     | {ptyp_desc = Ptyp_tuple comps; _} ->
-      expr_tuple ~loc ~quoter comps
+      expr_tuple ~loc ~quoter ?aux comps
     | {ptyp_desc = Ptyp_variant (rows, Closed, None); _} ->
-      expr_poly_variant ~loc ~quoter rows
+      expr_poly_variant ~loc ~quoter ?aux rows
     | {ptyp_desc = Ptyp_var name; _} ->
       evar ~loc ("poly_" ^ name)
     | _ ->
       Location.raise_errorf ~loc "other"
 
-and expr_poly_variant ~loc ~quoter rows =
+and expr_poly_variant ~loc ~quoter ?aux rows =
   rows
   |> List.map (fun {prf_desc; _} ->
       match prf_desc with
@@ -93,16 +148,16 @@ and expr_poly_variant ~loc ~quoter rows =
         let loc = {loc with loc_ghost = true} in
         let variant_i = Ppx_deriving.hash_variant label in
         let variant_const = hash_variant ~loc variant_i in
-        let label_fun = expr ~loc ~quoter ct in
+        let label_fun = expr ~loc ~quoter ?aux ct in
         case ~lhs:(ppat_variant ~loc label (Some [%pat? x]))
           ~guard:None
-          ~rhs:(hash_reduce2 ~loc variant_const [%expr [%e label_fun] x])
+          ~rhs:(hash_reduce2 ~loc variant_const (apply ~loc label_fun [%expr x]))
       | _ ->
         Location.raise_errorf ~loc "other variant"
     )
   |> pexp_function_cases ~loc
 
-and expr_variant ~loc ~quoter constrs =
+and expr_variant ~loc ~quoter ?aux constrs =
   constrs
   |> List.mapi (fun variant_i {pcd_name = {txt = label; loc}; pcd_args; pcd_res; _} ->
       let loc = {loc with loc_ghost = true} in
@@ -120,10 +175,10 @@ and expr_variant ~loc ~quoter constrs =
         let body =
           cts
           |> List.mapi (fun i comp_type ->
-              (i, expr ~loc ~quoter comp_type)
+              (i, expr ~loc ~quoter ?aux comp_type)
             )
           |> List.map (fun (i, label_fun) ->
-              [%expr [%e label_fun] [%e label_field ~loc "x" i]]
+              apply ~loc label_fun (label_field ~loc "x" i)
             )
           |> hash_fold ~loc variant_const
         in
@@ -147,10 +202,10 @@ and expr_variant ~loc ~quoter constrs =
           lds
           |> List.map (fun {pld_name = {txt = label; loc}; pld_type; _} ->
               let loc = {loc with loc_ghost = true} in
-              (label, expr ~loc ~quoter pld_type)
+              (label, expr ~loc ~quoter ?aux pld_type)
             )
           |> List.map (fun (label, label_fun) ->
-              [%expr [%e label_fun] [%e label_field ~loc x_expr label]]
+              apply ~loc label_fun (label_field ~loc x_expr label)
             )
           |> hash_fold ~loc variant_const
         in
@@ -163,7 +218,7 @@ and expr_variant ~loc ~quoter constrs =
     )
   |> pexp_function_cases ~loc
 
-and expr_record ~loc ~quoter lds =
+and expr_record ~loc ~quoter ?aux lds =
   let label_field ~loc record_expr label =
     pexp_field ~loc record_expr {loc; txt = Lident label}
   in
@@ -171,16 +226,16 @@ and expr_record ~loc ~quoter lds =
     lds
     |> List.map (fun {pld_name = {txt = label; loc}; pld_type; _} ->
         let loc = {loc with loc_ghost = true} in
-        (label, expr ~loc ~quoter pld_type)
+        (label, expr ~loc ~quoter ?aux pld_type)
       )
     |> List.map (fun (label, label_fun) ->
-        [%expr [%e label_fun] [%e label_field ~loc x_expr label]]
+        apply ~loc label_fun (label_field ~loc x_expr label)
       )
     |> hash_reduce ~loc
   in
   [%expr fun x -> [%e body [%expr x]]]
 
-and expr_tuple ~loc ~quoter comps =
+and expr_tuple ~loc ~quoter ?aux comps =
   let label_field ~loc prefix i =
     let name = prefix ^ string_of_int i in
     pexp_ident ~loc {loc; txt = Lident name}
@@ -188,10 +243,10 @@ and expr_tuple ~loc ~quoter comps =
   let body =
     comps
     |> List.mapi (fun i comp_type ->
-        (i, expr ~loc ~quoter comp_type)
+        (i, expr ~loc ~quoter ?aux comp_type)
       )
     |> List.map (fun (i, label_fun) ->
-        [%expr [%e label_fun] [%e label_field ~loc "x" i]]
+        apply ~loc label_fun (label_field ~loc "x" i)
       )
     |> hash_reduce ~loc
   in
@@ -205,17 +260,17 @@ and expr_tuple ~loc ~quoter comps =
   in
   [%expr fun [%p pat "x"] -> [%e body]]
 
-let expr_declaration ~loc ~quoter td = match td with
+let expr_declaration ~loc ~quoter ?aux td = match td with
   | {ptype_kind = Ptype_abstract; ptype_manifest = Some ct; _} ->
-    expr ~loc ~quoter ct
+    expr ~loc ~quoter ?aux ct
   | {ptype_kind = Ptype_abstract; _} ->
     Location.raise_errorf ~loc "Cannot derive accessors for abstract types"
   | {ptype_kind = Ptype_variant constrs; _} ->
-    expr_variant ~loc ~quoter constrs
+    expr_variant ~loc ~quoter ?aux constrs
   | {ptype_kind = Ptype_open; _} ->
     Location.raise_errorf ~loc "Cannot derive accessors for open types"
   | {ptype_kind = Ptype_record fields; _} ->
-    expr_record ~loc ~quoter fields
+    expr_record ~loc ~quoter ?aux fields
 
 let typ ~loc td =
   let ct = Ppx_deriving.core_type_of_type_decl td in
@@ -228,26 +283,42 @@ let generate_impl ~ctxt (rec_flag, type_declarations) =
   let loc = Expansion_context.Deriver.derived_item_loc ctxt in
   let loc = {loc with loc_ghost = true} in
   Ast_helper.with_default_loc loc @@ fun () -> (* ppx_deriving_hash shouldn't be using default_loc, but some of the Ppx_deriving API calls might *)
-  type_declarations
-  |> List.map (fun td ->
+  let rec_flag = really_recursive rec_flag type_declarations in
+  let auxs, vbs =
+    type_declarations
+    |> List.map (fun td ->
       let quoter = Ppx_deriving.create_quoter () in
-      let expr = expr_declaration ~loc ~quoter td in
+      let name = Ppx_deriving.mangle_type_decl mangle_affix td in
+      let aux = {td; name; defs = []; count = 0} in
+      let expr = expr_declaration ~loc ~quoter ~aux td in
       let expr =
         (* Ensure expr is statically constructive by eta-expanding non-funs.
            See https://github.com/ocaml-ppx/ppx_deriving/pull/252. *)
         match expr with
         | { pexp_desc = Pexp_function _; _ } -> expr
-        | _ -> [%expr fun x -> [%e expr] x]
+        | _ -> [%expr fun x -> [%e apply ~loc expr [%expr x]]]
       in
       let expr = Ppx_deriving.poly_fun_of_type_decl td expr in
       let expr = Ppx_deriving.sanitize ~quoter expr in
       let ct = typ ~loc td in
-      let pat = ppat_var ~loc {loc; txt = Ppx_deriving.mangle_type_decl mangle_affix td} in
+      let pat = ppat_var ~loc {loc; txt = name} in
       let pat = ppat_constraint ~loc pat ct in
-      Ast_helper.Vb.mk ~loc ~attrs:[Ppx_deriving.attr_warning [%expr "-39"]] pat expr
+      let vb = Ast_helper.Vb.mk ~loc ~attrs:[Ppx_deriving.attr_warning [%expr "-39"]] pat expr in
+      let aux_vbs =
+        List.rev_map (fun (name, expr) ->
+            let expr = Ppx_deriving.sanitize ~quoter expr in
+            Ast_helper.Vb.mk ~loc ~attrs:[Ppx_deriving.attr_warning [%expr "-39"]] (ppat_var ~loc {loc; txt = name}) expr
+          ) aux.defs
+      in
+      (aux_vbs, vb)
     )
-  |> Ast_helper.Str.value ~loc (really_recursive rec_flag type_declarations)
-  |> fun v -> [v]
+    |> List.split
+  in
+  let auxs = List.concat auxs in
+  match rec_flag, auxs with
+  | _, [] -> [Ast_helper.Str.value ~loc rec_flag vbs]
+  | Recursive, _ -> [Ast_helper.Str.value ~loc Recursive (auxs @ vbs)]
+  | Nonrecursive, _ -> [Ast_helper.Str.value ~loc Recursive auxs; Ast_helper.Str.value ~loc Nonrecursive vbs]
 
 let impl_generator = Deriving.Generator.V2.make_noarg generate_impl
 
