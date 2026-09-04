@@ -232,7 +232,6 @@ let generate_impl ~ctxt (rec_flag, type_declarations) =
   |> List.map (fun td ->
       let quoter = Ppx_deriving.create_quoter () in
       let expr = expr_declaration ~loc ~quoter td in
-      let expr = Ppx_deriving.poly_fun_of_type_decl td expr in
       let expr =
         (* Ensure expr is statically constructive by eta-expanding non-funs.
            See https://github.com/ocaml-ppx/ppx_deriving/pull/252. *)
@@ -240,6 +239,7 @@ let generate_impl ~ctxt (rec_flag, type_declarations) =
         | { pexp_desc = Pexp_function _; _ } -> expr
         | _ -> [%expr fun x -> [%e expr] x]
       in
+      let expr = Ppx_deriving.poly_fun_of_type_decl td expr in
       let expr = Ppx_deriving.sanitize ~quoter expr in
       let ct = typ ~loc td in
       let pat = ppat_var ~loc {loc; txt = Ppx_deriving.mangle_type_decl mangle_affix td} in
