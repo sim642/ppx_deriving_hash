@@ -53,3 +53,9 @@ and ('a, 'b) ptree =  (('a, 'b) ptree_kind hash_consed[@hash fun x -> x.tag])
 
 type ('a, 'b) two_alias = ('a, 'b) two [@@deriving hash]
 type ('a, 'b) two_wrap = Wrap of ('a, 'b) two_alias [@@deriving hash]
+
+type ('a, 'b) pseq =
+  | PMany of ('a, 'b) ptree list
+  | PArr of ('a, 'b) ptree array
+  | PPairs of ('a * 'b) list
+[@@deriving hash]
