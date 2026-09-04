@@ -44,3 +44,12 @@ type ints = int list [@@deriving hash]
 type 'a opt_alias = 'a option [@@deriving hash]
 
 type wrapped_list = (int[@hash fun x -> x + 1]) list [@@deriving hash]
+
+type ('a, 'b) ptree_kind =
+  | PLeaf of 'a
+  | PBranch of ('a, 'b) ptree * ('a, 'b) ptree
+and ('a, 'b) ptree =  (('a, 'b) ptree_kind hash_consed[@hash fun x -> x.tag])
+[@@deriving hash]
+
+type ('a, 'b) two_alias = ('a, 'b) two [@@deriving hash]
+type ('a, 'b) two_wrap = Wrap of ('a, 'b) two_alias [@@deriving hash]
