@@ -1,3 +1,7 @@
+## Unreleased
+* Fix derived functions of parametrised types allocating on every call: eta-expand before adding the type parameter arguments, hoist list/array folds into auxiliary functions, and beta-reduce applied generated functions.
+* Add `[@@deriving hash { mult = N }]` to choose the combiner multiplier (default `31`).
+
 ## 0.1.4
 * Fix expressions not allowed in `let rec` using eta-expansion (#7).
 * Optimize syntactic function arity on OCaml >= 5.2 (#7).

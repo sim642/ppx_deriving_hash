@@ -23,3 +23,4 @@ In dune:
 * Use `[@@deriving hash]` after a type definition to derive the function `val hash: t -> int` for it (if the type is named `t`) or `val ty_hash: ty -> int` (otherwise if the type is named `ty`).
 * Use `[@hash fun x -> ...]` after a type expression to override the underlying hash function used for it.
 * Use `[%hash: ty]` as an expression for the hash function of type `ty`.
+* Use `[@@deriving hash { mult = N }]` to choose the multiplier of the combiner (`N * h1 + h2`, default `31`). A larger odd multiplier (e.g. `65599`) avoids collisions between small values, such as hash-consing tags.
