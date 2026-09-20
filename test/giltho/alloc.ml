@@ -10,7 +10,7 @@ let t = { node = TBranch ({ node = TLeaf 1; tag = 1 }, { node = TLeaf 2; tag = 2
 let tests =
   "giltho" >::: [
     "alloc" >::: [
-#if OCAML_VERSION < (5, 2, 0)
+#if OCAML_VERSION < (5, 2, 0) || OCAML_VERSION >= (5, 6, 0)
       "expr" >:: test_no_alloc hash_expr e;
 #endif
       "nested" >:: test_no_alloc hash_nested [| [ [ 1; 2; 3 ]; [ 4; 5 ] ]; [ [ 6 ] ] |];
