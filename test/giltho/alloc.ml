@@ -6,6 +6,9 @@ open Types
 
 let e = Add (Lit 1, Many [ Neg (Lit 2); Lab ("x", Lit 3) ])
 let t = { node = TBranch ({ node = TLeaf 1; tag = 1 }, { node = TLeaf 2; tag = 2 }); tag = 3 }
+let leaf i = { node = PLeaf i; tag = i }
+let pt = PBranch (leaf 1, leaf 2)
+let hash_pseq' = hash_pseq (fun x -> x) Char.code
 
 let tests =
   "giltho" >::: [
@@ -29,5 +32,10 @@ let tests =
       "pairs" >:: test_no_alloc hash_pairs [ (1, 2); (3, 4); (5, 6) ];
       "rgb array" >:: test_no_alloc hash_rgb_arr [| { r = 1; g = 2; b = 3 } |];
       "override in list" >:: test_no_alloc hash_wrapped_list [ 10; 20; 30 ];
+      "poly override" >:: test_no_alloc (hash_ptree_kind (fun x -> x) Char.code) pt;
+      "poly alias" >:: test_no_alloc (hash_two_wrap (fun x -> x) Char.code) (Wrap (Two (1, 'a')));
+      "poly list" >:: test_no_alloc hash_pseq' (PMany [ leaf 1; leaf 2; leaf 3 ]);
+      "poly array" >:: test_no_alloc hash_pseq' (PArr [| leaf 1; leaf 2; leaf 3 |]);
+      "poly tuple list" >:: test_no_alloc hash_pseq' (PPairs [ (1, 'a'); (2, 'b') ]);
     ];
   ]
