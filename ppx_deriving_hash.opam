@@ -11,7 +11,7 @@ bug-reports: "https://github.com/sim642/ppx_deriving_hash/issues"
 depends: [
   "dune" {>= "3.21"}
   "ppxlib" {>= "0.36.0"}
-  "ppx_deriving" {>= "5.0"}
+  "ppx_deriving" {>= "6.1.3"}
   "ounit2" {with-test}
   "cppo" {with-test}
   "odoc" {with-doc}
