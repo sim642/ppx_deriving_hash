@@ -17,9 +17,7 @@ let tests =
       "rgb" >:: test_no_alloc hash_rgb { r = 1; g = 2; b = 3 };
       "pair" >:: test_no_alloc hash_pair (4, 5);
       "tree" >:: test_no_alloc hash_tree t;
-#if OCAML_VERSION < (5, 2, 0)
       "list" >:: test_no_alloc (hash_poly (fun x -> x)) (Cons (1, Cons (2, Cons (3, Nil))));
-#endif
       (* primitives mixed (incl. a float field, which must not re-box on read) *)
       "prim" >:: test_no_alloc hash_prim { i = 1; b = true; c = 'a'; s = "x"; f = 3.5 };
       "option" >:: test_no_alloc hash_opt (Some 5);
