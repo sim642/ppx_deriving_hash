@@ -1,3 +1,6 @@
+## Unreleased
+* Make type constraints explicitly polymorphic (#10).
+
 ## 0.1.4
 * Fix expressions not allowed in `let rec` using eta-expansion (#7).
 * Optimize syntactic function arity on OCaml >= 5.2 (#7).

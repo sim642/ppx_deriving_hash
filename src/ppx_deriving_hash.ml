@@ -241,7 +241,7 @@ let generate_impl ~ctxt (rec_flag, type_declarations) =
         | _ -> [%expr fun x -> [%e expr] x]
       in
       let expr = Ppx_deriving.sanitize ~quoter expr in
-      let ct = typ ~loc td in
+      let ct = Ppx_deriving.strong_type_of_type (typ ~loc td) in
       let pat = ppat_var ~loc {loc; txt = Ppx_deriving.mangle_type_decl mangle_affix td} in
       let pat = ppat_constraint ~loc pat ct in
       Ast_helper.Vb.mk ~loc ~attrs:[Ppx_deriving.attr_warning [%expr "-39"]] pat expr
