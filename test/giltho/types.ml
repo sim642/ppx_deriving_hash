@@ -44,3 +44,10 @@ type ints = int list [@@deriving hash]
 type 'a opt_alias = 'a option [@@deriving hash]
 
 type wrapped_list = (int[@hash fun x -> x + 1]) list [@@deriving hash]
+
+
+(* From https://github.com/sim642/ppx_deriving_hash/issues/10. *)
+
+type 'a binder = { value : 'a }
+and t = A of t binder | B of int binder
+[@@deriving hash]
