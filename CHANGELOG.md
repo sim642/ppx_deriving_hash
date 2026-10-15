@@ -1,5 +1,6 @@
-## Unreleased
+## 0.1.5
 * Make type constraints explicitly polymorphic (#10).
+* Bump ppx_deriving lower bound to 6.1.3 to avoid some intermediate closure allocations (https://github.com/ocaml-ppx/ppx_deriving/pull/306).
 
 ## 0.1.4
 * Fix expressions not allowed in `let rec` using eta-expansion (#7).
