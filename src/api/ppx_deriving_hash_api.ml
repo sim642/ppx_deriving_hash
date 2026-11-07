@@ -3,6 +3,10 @@ open Ast_builder.Default
 
 module type Algorithm =
 sig
+  type args
+  type 'r with_args
+  val args: ('r with_args, 'r) Deriving.Args.t
+  val parse_args: (args -> 'r) -> 'r with_args
   val seed: loc:location -> expression
   val mix: loc:location -> expression -> expression -> expression
 end
@@ -240,6 +244,7 @@ struct
       [%type: [%t ct] -> int]
 
   let generate_impl ~ctxt (rec_flag, type_declarations) =
+    Param.parse_args @@ fun args ->
     let loc = Expansion_context.Deriver.derived_item_loc ctxt in
     let loc = {loc with loc_ghost = true} in
     Ast_helper.with_default_loc loc @@ fun () -> (* ppx_deriving_hash shouldn't be using default_loc, but some of the Ppx_deriving API calls might *)
@@ -264,7 +269,7 @@ struct
     |> Ast_helper.Str.value ~loc (really_recursive rec_flag type_declarations)
     |> fun v -> [v]
 
-  let impl_generator = Deriving.Generator.V2.make_noarg generate_impl
+  let impl_generator = Deriving.Generator.V2.make Param.args generate_impl
 
   let generate_intf ~ctxt (_rec_flag, type_declarations): signature_item list =
     let loc = Expansion_context.Deriver.derived_item_loc ctxt in
