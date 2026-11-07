@@ -4,11 +4,12 @@ open Ast_builder.Default
 module type Algorithm =
 sig
   type args
+  val default_args: args
   type 'r with_args
   val args: unit -> ('r with_args, 'r) Deriving.Args.t
-  val parse_args: (args -> 'r) -> 'r with_args
-  val seed: loc:location -> expression
-  val mix: loc:location -> expression -> expression -> expression
+  val parse_args: (args:args -> 'r) -> 'r with_args
+  val seed: args:args -> loc:location -> expression
+  val mix: args:args -> loc:location -> expression -> expression -> expression
 end
 
 module type Param =
@@ -28,19 +29,19 @@ struct
 
   let hash_reduce2 = Param.mix
 
-  let hash_fold ~loc i =
-    List.fold_left (hash_reduce2 ~loc) i
+  let hash_fold ~args ~loc i =
+    List.fold_left (hash_reduce2 ~args ~loc) i
 
   let hash_empty = Param.seed
 
-  let hash_reduce ~loc = function
-    | [] -> hash_empty ~loc
+  let hash_reduce ~args ~loc = function
+    | [] -> hash_empty ~args ~loc
     | [x] -> x
-    | x :: xs -> hash_fold ~loc x xs (* omits hash_empty *)
+    | x :: xs -> hash_fold ~args ~loc x xs (* omits hash_empty *)
 
   let hash_variant ~loc i = eint ~loc i
 
-  let rec expr ~loc ~quoter ct =
+  let rec expr ~args ~loc ~quoter ct =
     match Attribute.get attr_hash ct with
     | Some hash ->
       Ppx_deriving.quote ~quoter hash
@@ -61,43 +62,43 @@ struct
       | [%type: int] ->
         [%expr fun (x: int) -> x]
       | [%type: unit] ->
-        [%expr fun () -> [%e hash_empty ~loc]]
+        [%expr fun () -> [%e hash_empty ~args ~loc]]
       | [%type: [%t? a] ref] ->
-        [%expr fun x -> [%e expr ~loc a] !x]
+        [%expr fun x -> [%e expr ~args ~loc a] !x]
       | [%type: [%t? a] option] ->
         [%expr function
           (* like variants *)
           | None -> [%e hash_variant ~loc 0]
-          | Some x -> [%e hash_reduce2 ~loc (hash_variant ~loc 1) [%expr [%e expr ~loc a] x]]
+          | Some x -> [%e hash_reduce2 ~args ~loc (hash_variant ~loc 1) [%expr [%e expr ~args ~loc a] x]]
         ]
       | [%type: [%t? a] list] ->
-        [%expr List.fold_left (fun a b -> [%e hash_reduce2 ~loc [%expr a] [%expr [%e expr ~loc a] b]]) [%e hash_empty ~loc]]
+        [%expr List.fold_left (fun a b -> [%e hash_reduce2 ~args ~loc [%expr a] [%expr [%e expr ~args ~loc a] b]]) [%e hash_empty ~args ~loc]]
       | [%type: [%t? a] array] ->
-        [%expr Array.fold_left (fun a b -> [%e hash_reduce2 ~loc [%expr a] [%expr [%e expr ~loc a] b]]) [%e hash_empty ~loc]]
+        [%expr Array.fold_left (fun a b -> [%e hash_reduce2 ~args ~loc [%expr a] [%expr [%e expr ~args ~loc a] b]]) [%e hash_empty ~args ~loc]]
       | [%type: [%t? a] lazy_t]
       | [%type: [%t? a] Lazy.t] ->
-        [%expr fun (lazy x) -> [%e expr ~loc a] x]
-      | {ptyp_desc = Ptyp_constr ({txt = lid; loc}, args); _} ->
+        [%expr fun (lazy x) -> [%e expr ~args ~loc a] x]
+      | {ptyp_desc = Ptyp_constr ({txt = lid; loc}, args'); _} ->
         let loc = {loc with loc_ghost = true} in
         let ident = pexp_ident ~loc {loc; txt = Ppx_deriving.mangle_lid mangle_affix lid} in
         let ident = Ppx_deriving.quote ~quoter ident in
         let apply_args =
-          args
+          args'
           |> List.map (fun ct ->
-              (Nolabel, expr ~loc ct)
+              (Nolabel, expr ~args ~loc ct)
             )
         in
         pexp_apply ~loc ident apply_args
       | {ptyp_desc = Ptyp_tuple comps; _} ->
-        expr_tuple ~loc ~quoter comps
+        expr_tuple ~args ~loc ~quoter comps
       | {ptyp_desc = Ptyp_variant (rows, Closed, None); _} ->
-        expr_poly_variant ~loc ~quoter rows
+        expr_poly_variant ~args ~loc ~quoter rows
       | {ptyp_desc = Ptyp_var name; _} ->
         evar ~loc ("poly_" ^ name)
       | _ ->
         Location.raise_errorf ~loc "other"
 
-  and expr_poly_variant ~loc ~quoter rows =
+  and expr_poly_variant ~args ~loc ~quoter rows =
     rows
     |> List.map (fun {prf_desc; _} ->
         match prf_desc with
@@ -112,16 +113,16 @@ struct
           let loc = {loc with loc_ghost = true} in
           let variant_i = Ppx_deriving.hash_variant label in
           let variant_const = hash_variant ~loc variant_i in
-          let label_fun = expr ~loc ~quoter ct in
+          let label_fun = expr ~args ~loc ~quoter ct in
           case ~lhs:(ppat_variant ~loc label (Some [%pat? x]))
             ~guard:None
-            ~rhs:(hash_reduce2 ~loc variant_const [%expr [%e label_fun] x])
+            ~rhs:(hash_reduce2 ~args ~loc variant_const [%expr [%e label_fun] x])
         | _ ->
           Location.raise_errorf ~loc "other variant"
       )
     |> pexp_function_cases ~loc
 
-  and expr_variant ~loc ~quoter constrs =
+  and expr_variant ~args ~loc ~quoter constrs =
     constrs
     |> List.mapi (fun variant_i {pcd_name = {txt = label; loc}; pcd_args; pcd_res; _} ->
         let loc = {loc with loc_ghost = true} in
@@ -139,12 +140,12 @@ struct
           let body =
             cts
             |> List.mapi (fun i comp_type ->
-                (i, expr ~loc ~quoter comp_type)
+                (i, expr ~args ~loc ~quoter comp_type)
               )
             |> List.map (fun (i, label_fun) ->
                 [%expr [%e label_fun] [%e label_field ~loc "x" i]]
               )
-            |> hash_fold ~loc variant_const
+            |> hash_fold ~args ~loc variant_const
           in
           let pat prefix =
             cts
@@ -166,12 +167,12 @@ struct
             lds
             |> List.map (fun {pld_name = {txt = label; loc}; pld_type; _} ->
                 let loc = {loc with loc_ghost = true} in
-                (label, expr ~loc ~quoter pld_type)
+                (label, expr ~args ~loc ~quoter pld_type)
               )
             |> List.map (fun (label, label_fun) ->
                 [%expr [%e label_fun] [%e label_field ~loc x_expr label]]
               )
-            |> hash_fold ~loc variant_const
+            |> hash_fold ~args ~loc variant_const
           in
           let pat = ppat_construct ~loc {loc; txt = Lident label} (Some [%pat? x]) in
           case ~lhs:pat
@@ -182,7 +183,7 @@ struct
       )
     |> pexp_function_cases ~loc
 
-  and expr_record ~loc ~quoter lds =
+  and expr_record ~args ~loc ~quoter lds =
     let label_field ~loc record_expr label =
       pexp_field ~loc record_expr {loc; txt = Lident label}
     in
@@ -190,16 +191,16 @@ struct
       lds
       |> List.map (fun {pld_name = {txt = label; loc}; pld_type; _} ->
           let loc = {loc with loc_ghost = true} in
-          (label, expr ~loc ~quoter pld_type)
+          (label, expr ~args ~loc ~quoter pld_type)
         )
       |> List.map (fun (label, label_fun) ->
           [%expr [%e label_fun] [%e label_field ~loc x_expr label]]
         )
-      |> hash_reduce ~loc
+      |> hash_reduce ~args ~loc
     in
     [%expr fun x -> [%e body [%expr x]]]
 
-  and expr_tuple ~loc ~quoter comps =
+  and expr_tuple ~args ~loc ~quoter comps =
     let label_field ~loc prefix i =
       let name = prefix ^ string_of_int i in
       pexp_ident ~loc {loc; txt = Lident name}
@@ -207,12 +208,12 @@ struct
     let body =
       comps
       |> List.mapi (fun i comp_type ->
-          (i, expr ~loc ~quoter comp_type)
+          (i, expr ~args ~loc ~quoter comp_type)
         )
       |> List.map (fun (i, label_fun) ->
           [%expr [%e label_fun] [%e label_field ~loc "x" i]]
         )
-      |> hash_reduce ~loc
+      |> hash_reduce ~args ~loc
     in
     let pat prefix =
       comps
@@ -244,14 +245,14 @@ struct
       [%type: [%t ct] -> int]
 
   let generate_impl ~ctxt (rec_flag, type_declarations) =
-    Param.parse_args @@ fun args ->
+    Param.parse_args @@ fun ~args ->
     let loc = Expansion_context.Deriver.derived_item_loc ctxt in
     let loc = {loc with loc_ghost = true} in
     Ast_helper.with_default_loc loc @@ fun () -> (* ppx_deriving_hash shouldn't be using default_loc, but some of the Ppx_deriving API calls might *)
     type_declarations
     |> List.map (fun td ->
         let quoter = Ppx_deriving.create_quoter () in
-        let expr = expr_declaration ~loc ~quoter td in
+        let expr = expr_declaration ~args ~loc ~quoter td in
         let expr = Ppx_deriving.poly_fun_of_type_decl td expr in
         let expr =
           (* Ensure expr is statically constructive by eta-expanding non-funs.
@@ -287,7 +288,7 @@ struct
     let loc = {loc with loc_ghost = true} in
     Ast_helper.with_default_loc loc @@ fun () -> (* ppx_deriving_hash shouldn't be using default_loc, but some of the Ppx_deriving API calls might *)
     let quoter = Ppx_deriving.create_quoter () in
-    Ppx_deriving.sanitize ~quoter (expr ~loc ~quoter ct)
+    Ppx_deriving.sanitize ~quoter (expr ~args:Param.default_args ~loc ~quoter ct)
 
   let my_deriver =
     Deriving.add
