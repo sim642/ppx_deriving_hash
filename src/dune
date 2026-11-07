@@ -1,6 +1,5 @@
 (library
- (name default)
+ (name ppx_deriving_hash)
  (public_name ppx_deriving_hash)
  (kind ppx_deriver)
- (libraries ppx_deriving_hash.api)
- (preprocess (pps ppxlib.metaquot)))
+ (libraries default))
