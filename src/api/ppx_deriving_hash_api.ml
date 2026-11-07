@@ -5,7 +5,7 @@ module type Algorithm =
 sig
   type args
   type 'r with_args
-  val args: ('r with_args, 'r) Deriving.Args.t
+  val args: unit -> ('r with_args, 'r) Deriving.Args.t
   val parse_args: (args -> 'r) -> 'r with_args
   val seed: loc:location -> expression
   val mix: loc:location -> expression -> expression -> expression
@@ -269,7 +269,7 @@ struct
     |> Ast_helper.Str.value ~loc (really_recursive rec_flag type_declarations)
     |> fun v -> [v]
 
-  let impl_generator = Deriving.Generator.V2.make Param.args generate_impl
+  let impl_generator = Deriving.Generator.V2.make (Param.args ()) generate_impl
 
   let generate_intf ~ctxt (_rec_flag, type_declarations): signature_item list =
     let loc = Expansion_context.Deriver.derived_item_loc ctxt in
