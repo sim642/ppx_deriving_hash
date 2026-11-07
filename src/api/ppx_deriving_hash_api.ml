@@ -291,19 +291,3 @@ struct
       ~sig_type_decl:intf_generator
       ~extension
 end
-
-
-module DefaultAlgorithm: Algorithm =
-struct
-  let seed ~loc = [%expr 0]
-  let mix ~loc a b =
-    [%expr 31 * [%e a] + [%e b]]
-end
-
-module DefaultParam: Param =
-struct
-  let name = "hash"
-  include DefaultAlgorithm
-end
-
-module DefaultDeriver = Make (DefaultParam)
