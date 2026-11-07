@@ -7,21 +7,27 @@ sig
   val mix: loc:location -> expression -> expression -> expression
 end
 
+module type Param =
+sig
+  val name: string
+  include Algorithm
+end
+
 
 let mangle_affix = `Prefix "hash"
 
 
-module Make (Algorithm: Algorithm) =
+module Make (Param: Param) =
 struct
-  let attr_hash = Attribute.declare "deriving.hash.hash" Attribute.Context.core_type Ast_pattern.(single_expr_payload __) (fun expr -> expr)
+  let attr_hash = Attribute.declare (Printf.sprintf "deriving.%s.hash" Param.name) Attribute.Context.core_type Ast_pattern.(single_expr_payload __) (fun expr -> expr)
 
 
-  let hash_reduce2 = Algorithm.mix
+  let hash_reduce2 = Param.mix
 
   let hash_fold ~loc i =
     List.fold_left (hash_reduce2 ~loc) i
 
-  let hash_empty = Algorithm.seed
+  let hash_empty = Param.seed
 
   let hash_reduce ~loc = function
     | [] -> hash_empty ~loc
@@ -280,7 +286,7 @@ struct
 
   let my_deriver =
     Deriving.add
-      "hash"
+      Param.name
       ~str_type_decl:impl_generator
       ~sig_type_decl:intf_generator
       ~extension
@@ -294,4 +300,10 @@ struct
     [%expr 31 * [%e a] + [%e b]]
 end
 
-module DefaultDeriver = Make (DefaultAlgorithm)
+module DefaultParam: Param =
+struct
+  let name = "hash"
+  include DefaultAlgorithm
+end
+
+module DefaultDeriver = Make (DefaultParam)
